@@ -1,0 +1,8 @@
+{
+  "version": 3,
+  "file": "index.js",
+  "sourceRoot": "../../contract/",
+  "sources": ["secret_notes.compact"],
+  "names": [],
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAAA;;;;;;;;;;;;;MAUA,AAAA,UAIC;;;;;cAJyB,cAAuB;;;;;;;;;;;;;;;;;;yCAAvB,cAAuB;;;;;;;;;4CAAvB,cAAuB;;;OAIhD;MAED,AAAA,WAMC;;;;;cAN0B,qBAA8B;;;;;;;;;;;;;;;;;;yCAA9B,qBAA8B;;;;;;;;;6CAA9B,qBAA8B;;;OAMxD;;;;;;;;;;GACA;EAvBD;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;IAIA;;;;;;;;;yEAAqC;IACrC;;;;;;;;;yEAAmC;IACnC;;;;;;;;;yEAAqC;;;;;;;GAiBpC;EAfD,AAAA,aAAgC;;0DAAhC,UAAgC;;;;;;;;;;;;;;GAAA;EAEhC,AAAA,aAIC,4BAJyB,cAAuB;IAC7C;;;;;;;2HAAqB,cAAY;;yEAAxB;IACT;;;;;;;;;yEAAa;UACb,KAAY;IAAZ;;;;;;;2HAAA,KAAY;;yEAAA;;GACf;EAED,AAAA,cAMC,4BAN0B,qBAA8B;UAC/C,QAAqB;0CACX,qBAAmB,EAAI,QAAM;;IAC7C;;;;;;;;;yEAAa;UACb,KAAY;;;;;6CAAa;;;;;;;;;;;kHAAY;;;IAArC;;;;;;;2HAAA,KAAY;;yEAAA;mCACI;;;;;;;;;;;wGAAa;GAChC;;;;;;;;;;;;;;;;;;;;IAlBD;qCAAA;;;;;;;;;;;0GAAqC;KAAA;IACrC;qCAAA;;;;;;;;;;;0GAAmC;KAAA;IACnC;qCAAA;;;;;;;;;;;0GAAqC;KAAA;;;;;;;;;;"
+}

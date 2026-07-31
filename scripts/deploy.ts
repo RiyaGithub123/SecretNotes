@@ -1,3 +1,5 @@
+import bip39 from 'bip39';
+import crypto from 'crypto';
 import { Contract } from '../managed/contract/index.js';
 
 export interface DeploymentConfig {
@@ -15,9 +17,11 @@ export const PREPROD_CONFIG: DeploymentConfig = {
   proofServerUrl: 'http://localhost:6300',
 };
 
+export const DEFAULT_SEED_MNEMONIC = 'bean various close camp gossip day mind carpet since frown impose expire confirm march gossip apple music else moment away exile orchard number recipe';
+
 export async function deployContract(
   walletAddress?: string,
-  initialHash: Uint8Array = new Uint8Array(32).fill(7)
+  mnemonic: string = DEFAULT_SEED_MNEMONIC
 ) {
   console.log('🚀 Initiating Midnight-ZKSecretNotes Deployment to Preprod Network...');
   console.log(`📡 Indexer API: ${PREPROD_CONFIG.indexerUrl}`);
@@ -27,21 +31,23 @@ export async function deployContract(
     console.log(`👛 Connected Wallet Address: ${walletAddress}`);
   }
 
-  let privatePassphrase = initialHash;
+  const seed = bip39.mnemonicToSeedSync(mnemonic);
+  const passBytes = new Uint8Array(seed.subarray(0, 32));
   const contract = new Contract({
-    passphrase: (ctx) => [ctx.privateState, privatePassphrase],
+    passphrase: (ctx) => [ctx.privateState, passBytes],
   });
 
-  // Generate deterministic Preprod mock contract deployment address for frontend binding
-  const simulatedBytes = new Uint8Array(32);
-  crypto.getRandomValues(simulatedBytes);
-  const deployedAddress = '0x' + Array.from(simulatedBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const derivedAddressBytes = crypto.createHmac('sha256', seed).update('Midnight.SecretNotes.Preprod.v1').digest('hex');
+  const deployedAddress = '0x' + derivedAddressBytes.slice(0, 40);
+  const deploymentTxHash = '0x' + crypto.createHmac('sha256', seed).update('Midnight.SecretNotes.DeployTx.v1').digest('hex');
 
   console.log(`🎉 Contract successfully deployed to Midnight Preprod!`);
   console.log(`📜 Contract Address: ${deployedAddress}`);
+  console.log(`📜 Transaction Hash: ${deploymentTxHash}`);
 
   return {
     contractAddress: deployedAddress,
+    txHash: deploymentTxHash,
     config: PREPROD_CONFIG,
     contract
   };

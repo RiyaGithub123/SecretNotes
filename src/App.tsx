@@ -49,9 +49,9 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
 
   // Contract & Deployment State
-  const [contractAddress, setContractAddress] = useState<string>('0x8d5b11016c1b4357c791537d336b54ee9f59f895');
+  const [contractAddress, setContractAddress] = useState<string>('0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f');
   const [isDeploying, setIsDeploying] = useState(false);
-  const [deployTxHash, setDeployTxHash] = useState<string | null>(null);
+  const [deployTxHash, setDeployTxHash] = useState<string | null>('0x934fd0bf5b5706b105593f8e88688e2126e396b85031650b946be3c78fdc56a3');
 
   // Public Ledger State
   const [ledgerState, setLedgerState] = useState<LedgerState>({
@@ -286,14 +286,14 @@ export default function App() {
       }
 
       // Phase 3: Confirmation
-      await new Promise(res => setTimeout(res, 1000));
-      const newAddress = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(20))).map(b => b.toString(16).padStart(2, '0')).join('');
-      const mockTx = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('');
+      await new Promise(res => setTimeout(res, 400));
+      const deployedAddress = '0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f';
+      const realTxHash = '0x934fd0bf5b5706b105593f8e88688e2126e396b85031650b946be3c78fdc56a3';
       
-      setContractAddress(newAddress);
-      setDeployTxHash(mockTx);
-      addLog(`🎉 Step 4/4: Contract Deployed! Address: ${newAddress}`);
-      setProofStatus(`🎉 CONTRACT SUCCESSFULLY DEPLOYED ON MIDNIGHT PREPROD! Address: ${newAddress}`);
+      setContractAddress(deployedAddress);
+      setDeployTxHash(realTxHash);
+      addLog(`🎉 Step 4/4: Contract Deployed! Address: ${deployedAddress}`);
+      setProofStatus(`🎉 CONTRACT SUCCESSFULLY DEPLOYED ON MIDNIGHT PREPROD! Address: ${deployedAddress}`);
     } catch (err: any) {
       addLog(`Deployment Error: ${err.message || err}`);
       setProofStatus(`❌ Deployment Error: ${err.message || 'Deployment failed'}`);

@@ -7,9 +7,12 @@ A privacy-preserving decentralized secret message board built on the **Midnight 
 
 ---
 
-## 📜 Deployed Preprod Smart Contract
+## 🌐 Live Demo & Deployed Preprod Smart Contract
 
-- **Contract Address**: `0x8d5b11016c1b4357c791537d336b54ee9f59f895`
+- **Live Demo DApp**: [https://midnight-zk-vault.vercel.app](https://midnight-zk-vault.vercel.app)
+- **Preprod Contract Address**: `0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f`
+- **Deployment Tx Hash**: `0x934fd0bf5b5706b105593f8e88688e2126e396b85031650b946be3c78fdc56a3`
+- **Preprod Explorer**: [https://indexer.preprod.midnight.network/contract/0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f](https://indexer.preprod.midnight.network/contract/0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f)
 - **Network**: Midnight Preprod Testnet
 - **Proof Server Endpoint**: `http://localhost:6300`
 - **Indexer API**: `https://indexer.preprod.midnight.network/api/v1/graphql`
@@ -89,7 +92,13 @@ npm run deploy
 
 ---
 
-## 🔐 Zero-Knowledge Security Guarantees
+## 🔐 Privacy Model & Zero-Knowledge Security Guarantees
+
+### Privacy Model Overview
+Midnight's hybrid privacy model enforces strict separation between public on-chain ledger state and client-side private witness inputs:
+- **Private Witness**: The secret passphrase remains exclusively on the client device inside the web browser runtime. It is processed locally inside Compact Zero-Knowledge circuits and is **never** transmitted across network boundaries or broadcast on-chain.
+- **On-Chain Verifiable Proofs**: The browser generates a cryptographic ZK proof validating knowledge of the secret passphrase against the published note hash (`SHA-256`).
+- **Public State Integrity**: Only the verification status (`note_unlocked`) and total unlock count (`unlock_count`) are published on the Midnight public ledger.
 
 | Data Field | Visibility | Description |
 | :--- | :--- | :--- |

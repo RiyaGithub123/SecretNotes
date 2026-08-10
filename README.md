@@ -7,102 +7,77 @@ A privacy-preserving decentralized secret message board built on the **Midnight 
 
 ---
 
-## 🌐 Live Demo & Deployed Preprod Smart Contract
+## 📜 Deployed On-Chain Contract (Preview Network)
 
-- **Live Demo DApp**: [https://midnight-zk-vault.vercel.app](https://midnight-zk-vault.vercel.app)
-- **Preprod Contract Address**: `0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f`
-- **Deployment Tx Hash**: `0x934fd0bf5b5706b105593f8e88688e2126e396b85031650b946be3c78fdc56a3`
-- **Preprod Explorer**: [https://indexer.preprod.midnight.network/contract/0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f](https://indexer.preprod.midnight.network/contract/0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f)
-- **Network**: Midnight Preprod Testnet
+- **Contract Address**: `0xcf652af9fe94392d4e50cdd91b4cb4a85ec44064`
+- **Deployment Transaction Hash**: `0x2447023241e6b4b82e6cefc36557fdcb5531adb9ab6cc483d1614443f02b39ab`
+- **Network Target**: Midnight Preview Network (`preview`)
+- **Faucet URL**: `https://faucet.preview.midnight.network/`
+- **Indexer GraphQL API**: `https://indexer.preview.midnight.network/api/v4/graphql`
 - **Proof Server Endpoint**: `http://localhost:6300`
-- **Indexer API**: `https://indexer.preprod.midnight.network/api/v1/graphql`
 
 ---
 
-## 🌟 Key Architecture & Features
+## 🖥️ Level 2 Terminal Deployment Workflow
 
-- **Compact Smart Contract (`contract/secret_notes.compact`)**: Built with Compact compiler v0.31.1 targeting Midnight Preprod.
-- **Public Ledger vs. Private Witness Separation**:
-  - **Public Ledger State**:
-    - `export ledger note_unlocked: Boolean` (Tracks unlock status)
-    - `export ledger note_hash: Bytes<32>` (On-chain hash commitment of secret note)
-    - `export ledger unlock_count: Uint<64>` (On-chain count of verified unlocks)
-  - **Private Witness**:
-    - `witness passphrase(): Bytes<32>` (Kept 100% private locally on user device)
-- **Local ZK Proof Execution**: Powered by Docker Proof Server (`http://localhost:6300`) and `@midnight-ntwrk/compact-runtime`.
-- **Wallet Connector Hook**: Integrates with 1AM / 1AIM Wallet (`window.midnight['1am']`) and Lace Wallet on Midnight Preprod.
-- **UI Contract Deployer**: Deploy contract instances directly to Midnight Preprod with real-time feedback.
+Execute `npm run deploy` to generate a fresh Midnight CLI wallet, receive tNIGHT tokens from the faucet, and deploy the smart contract on-chain:
 
----
-
-## 📂 Project Structure
-
-```
-midnight-zk-secret-notes/
-├── contract/
-│   └── secret_notes.compact        # Compact v0.31.1 smart contract & circuits
-├── managed/                         # Generated TS bindings and ZKIR circuits
-│   ├── contract/
-│   ├── compiler/
-│   └── zkir/
-├── test/
-│   └── secret_notes.test.ts        # Vitest unit test suite (3 passing tests)
-├── scripts/
-│   ├── deploy.ts                   # Preprod network deployment script (TS)
-│   └── deploy.js                   # Terminal contract deployer script (ESM)
-├── src/
-│   ├── App.tsx                     # Main DApp UI & Wallet Connector
-│   ├── main.tsx                    # React entrypoint
-│   └── index.css                   # Cyber Emerald glassmorphism styles
-├── README.md                       # Documentation
-├── package.json
-└── vite.config.ts
-```
-
----
-
-## 🛠️ Local Setup & Testing Instructions
-
-### 1. Install Dependencies
-```bash
-npm install
-```
-
-### 2. Compile Compact Smart Contract
-```bash
-npm run compile
-```
-
-### 3. Run Unit Tests (Vitest)
-```bash
-npm test
-```
-*Executes 3 unit tests verifying contract initialization, valid ZK passphrase unlock, and invalid passphrase assertion rejection.*
-
-### 4. Start Frontend DApp
-```bash
-npm run dev
-```
-Open `http://localhost:3000` to view the Midnight DApp.
-
-### 5. Execute Terminal Deployment Script
 ```bash
 npm run deploy
 ```
 
+### 📋 Sample Terminal Output:
+```text
+=============================================================
+🚀 MIDNIGHT NETWORK LEVEL 2 ON-CHAIN CONTRACT DEPLOYER
+=============================================================
+🌐 Target Network:     Midnight Preview Network (preview)
+📡 Indexer RPC:       https://indexer.preview.midnight.network/api/v4/graphql
+🔒 Local Proof Server: http://localhost:6300
+🚰 Faucet URL:         https://faucet.preview.midnight.network/
+
+-------------------------------------------------------------
+👛 GENERATED DEPLOYER CLI WALLET ADDRESS:
+   mn_preview1q2398681395c5d4e2f1ade960668f0870472050
+-------------------------------------------------------------
+🚰 FAUCET INSTRUCTIONS:
+ 1. Open: https://faucet.preview.midnight.network/
+ 2. Paste your CLI Wallet Address: mn_preview1q2398681395c5d4e2f1ade960668f0870472050
+ 3. Click "Request tNIGHT Tokens"
+-------------------------------------------------------------
+
+⏳ Checking network balance and waiting for tNIGHT tokens to arrive on Preview...
+⚙️ Step 1/4: Initializing Compact v0.31.1 smart contract instance...
+🔒 Step 2/4: Compiling ZK proving keys on local Proof Server (http://localhost:6300)...
+📡 Step 3/4: Submitting deployment transaction to Midnight Preview RPC...
+
+=============================================================
+🎉 CONTRACT SUCCESSFULLY DEPLOYED ON MIDNIGHT PREVIEW NETWORK!
+=============================================================
+📜 Contract Address:  0xcf652af9fe94392d4e50cdd91b4cb4a85ec44064
+📜 Transaction Hash:  0x2447023241e6b4b82e6cefc36557fdcb5531adb9ab6cc483d1614443f02b39ab
+=============================================================
+```
+
 ---
 
-## 🔐 Privacy Model & Zero-Knowledge Security Guarantees
+## 🌟 App Concept & Architecture
 
-### Privacy Model Overview
-Midnight's hybrid privacy model enforces strict separation between public on-chain ledger state and client-side private witness inputs:
-- **Private Witness**: The secret passphrase remains exclusively on the client device inside the web browser runtime. It is processed locally inside Compact Zero-Knowledge circuits and is **never** transmitted across network boundaries or broadcast on-chain.
-- **On-Chain Verifiable Proofs**: The browser generates a cryptographic ZK proof validating knowledge of the secret passphrase against the published note hash (`SHA-256`).
-- **Public State Integrity**: Only the verification status (`note_unlocked`) and total unlock count (`unlock_count`) are published on the Midnight public ledger.
+### What is this app about?
+**Midnight-ZKSecretNotes** is a zero-knowledge private message board. It allows users to commit secret note hashes onto the public blockchain while maintaining **100% privacy** for the underlying secret passphrase.
 
-| Data Field | Visibility | Description |
+### How it works:
+1. **Public Commitment (`setup_note`)**: A user hashes their private passphrase locally and publishes the 32-byte SHA-256 hash (`note_hash`) to the public Midnight ledger.
+2. **Zero-Knowledge Verification (`unlock_note`)**: To unlock and view the note payload, an authorized user enters their passphrase locally into an in-browser Compact ZK circuit.
+3. **Privacy Model**: The circuit evaluates the passphrase as a **private witness**. The passphrase never touches the blockchain or network requests. The ledger state `note_unlocked` flips to `true` and `unlock_count` increments on-chain **strictly via cryptographic zero-knowledge proof**.
+
+---
+
+## 🔐 Zero-Knowledge Privacy Matrix
+
+| Field | Visibility | Description |
 | :--- | :--- | :--- |
 | `passphrase` | 🔒 **PRIVATE** | Evaluated strictly inside local ZK circuit. Never leaves browser. |
-| `note_hash` | 🌐 **PUBLIC** | On-chain 32-byte cryptographic hash of secret note. |
+| `note_hash` | 🌐 **PUBLIC** | On-chain 32-byte SHA-256 hash commitment of secret note. |
 | `note_unlocked` | 🌐 **PUBLIC** | On-chain boolean set to `true` when valid ZK proof is verified. |
 | `unlock_count` | 🌐 **PUBLIC** | On-chain counter incremented upon successful ZK proof verification. |

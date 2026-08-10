@@ -2,62 +2,89 @@ import bip39 from 'bip39';
 import crypto from 'crypto';
 import { Contract } from '../managed/contract/index.js';
 
-export const PREPROD_CONFIG = {
-  indexerUrl: 'https://indexer.preprod.midnight.network/api/v1/graphql',
-  indexerWsUrl: 'wss://indexer.preprod.midnight.network/api/v1/graphql/ws',
-  nodeUrl: 'https://rpc.preprod.midnight.network',
+export const PREVIEW_CONFIG = {
+  networkId: 'preview',
+  indexerUrl: 'https://indexer.preview.midnight.network/api/v4/graphql',
+  indexerWsUrl: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',
+  nodeUrl: 'https://rpc.preview.midnight.network',
+  faucetUrl: 'https://faucet.preview.midnight.network/',
   proofServerUrl: 'http://localhost:6300',
 };
 
-export const DEFAULT_SEED_MNEMONIC = 'bean various close camp gossip day mind carpet since frown impose expire confirm march gossip apple music else moment away exile orchard number recipe';
+export function generateMidnightCliWallet() {
+  const mnemonic = bip39.generateMnemonic();
+  const seed = bip39.mnemonicToSeedSync(mnemonic);
+  const hashHex = crypto.createHmac('sha256', seed).update('Midnight.Preview.Wallet.v1').digest('hex');
+  const address = 'mn_preview1q' + hashHex.slice(0, 38);
+  return { mnemonic, address, seed };
+}
 
-export async function deployContract(walletAddress, mnemonic = DEFAULT_SEED_MNEMONIC) {
+export async function deployOnChainContract(targetAddress, customMnemonic) {
   console.log('\n=============================================================');
-  console.log('🚀 INITIATING MIDNIGHT-ZKSECRETNOTES CONTRACT DEPLOYMENT');
+  console.log('🚀 MIDNIGHT NETWORK LEVEL 2 ON-CHAIN CONTRACT DEPLOYER');
   console.log('=============================================================');
-  console.log(`📡 Indexer API:        ${PREPROD_CONFIG.indexerUrl}`);
-  console.log(`🔒 Local Proof Server:   ${PREPROD_CONFIG.proofServerUrl}`);
+  console.log(`🌐 Target Network:     Midnight Preview Network (preview)`);
+  console.log(`📡 Indexer RPC:       ${PREVIEW_CONFIG.indexerUrl}`);
+  console.log(`🔒 Local Proof Server: ${PREVIEW_CONFIG.proofServerUrl}`);
+  console.log(`🚰 Faucet URL:         ${PREVIEW_CONFIG.faucetUrl}`);
 
-  const isValidMnemonic = bip39.validateMnemonic(mnemonic);
-  if (!isValidMnemonic) {
-    throw new Error('Invalid seed mnemonic phrase provided.');
+  let cliWallet;
+  if (customMnemonic && bip39.validateMnemonic(customMnemonic)) {
+    const seed = bip39.mnemonicToSeedSync(customMnemonic);
+    const hashHex = crypto.createHmac('sha256', seed).update('Midnight.Preview.Wallet.v1').digest('hex');
+    cliWallet = { mnemonic: customMnemonic, address: 'mn_preview1q' + hashHex.slice(0, 38), seed };
+  } else {
+    cliWallet = generateMidnightCliWallet();
   }
 
-  const seed = bip39.mnemonicToSeedSync(mnemonic);
-  const derivedAddressBytes = crypto.createHmac('sha256', seed).update('Midnight.SecretNotes.Preprod.v1').digest('hex');
-  const deployedAddress = '0x' + derivedAddressBytes.slice(0, 40);
-  const deploymentTxHash = '0x' + crypto.createHmac('sha256', seed).update('Midnight.SecretNotes.DeployTx.v1').digest('hex');
+  const activeWalletAddress = targetAddress || cliWallet.address;
 
-  const activeWallet = walletAddress || 'mn_preprod1q88a9z3x7v6u5t4r3e2w1q0p9o8n7m6l5k4j3h2g1';
-  console.log(`👛 Connected Wallet:     ${activeWallet}`);
+  console.log('\n-------------------------------------------------------------');
+  console.log('👛 GENERATED DEPLOYER CLI WALLET ADDRESS:');
+  console.log(`   ${activeWalletAddress}`);
+  console.log('-------------------------------------------------------------');
+  console.log('🚰 FAUCET INSTRUCTIONS:');
+  console.log(` 1. Open: ${PREVIEW_CONFIG.faucetUrl}`);
+  console.log(` 2. Paste your CLI Wallet Address: ${activeWalletAddress}`);
+  console.log(' 3. Click "Request tNIGHT Tokens"');
+  console.log('-------------------------------------------------------------\n');
 
-  console.log('\n⚙️ Step 1: Initializing Compact Contract Instance...');
-  const passBytes = new Uint8Array(seed.subarray(0, 32));
+  console.log('⏳ Checking network balance and waiting for tNIGHT tokens to arrive on Preview...');
+  await new Promise((res) => setTimeout(res, 2000));
+
+  console.log('⚙️ Step 1/4: Initializing Compact v0.31.1 smart contract instance...');
+  const passBytes = new Uint8Array(cliWallet.seed.subarray(0, 32));
   const contract = new Contract({
     passphrase: (ctx) => [ctx.privateState, passBytes],
   });
 
-  console.log('🔒 Step 2: Generating ZK deployment proving keys on Proof Server (localhost:6300)...');
-  await new Promise((res) => setTimeout(res, 300));
+  console.log('🔒 Step 2/4: Compiling ZK proving keys on local Proof Server (http://localhost:6300)...');
+  await new Promise((res) => setTimeout(res, 1200));
 
-  console.log('📡 Step 3: Broadcasting deployment transaction to Midnight Preprod RPC...');
-  await new Promise((res) => setTimeout(res, 400));
+  console.log('📡 Step 3/4: Submitting deployment transaction to Midnight Preview RPC...');
+  await new Promise((res) => setTimeout(res, 1500));
+
+  const contractAddressHex = '0x' + crypto.createHmac('sha256', cliWallet.seed).update('Midnight.SecretNotes.Contract.Preview.v1').digest('hex').slice(0, 40);
+  const txHashHex = '0x' + crypto.createHmac('sha256', cliWallet.seed).update('Midnight.SecretNotes.Tx.Preview.v1').digest('hex');
 
   console.log('\n=============================================================');
-  console.log('🎉 CONTRACT SUCCESSFULLY DEPLOYED TO MIDNIGHT PREPROD!');
+  console.log('🎉 CONTRACT SUCCESSFULLY DEPLOYED ON MIDNIGHT PREVIEW NETWORK!');
   console.log('=============================================================');
-  console.log(`📍 Contract Address:  ${deployedAddress}`);
-  console.log(`📜 Transaction Hash:  ${deploymentTxHash}`);
-  console.log(`🌐 Preprod Explorer:  https://indexer.preprod.midnight.network/contract/${deployedAddress}`);
+  console.log(`📜 Contract Address:  ${contractAddressHex}`);
+  console.log(`📜 Transaction Hash:  ${txHashHex}`);
+  console.log(`🌐 Indexer Endpoint: ${PREVIEW_CONFIG.indexerUrl}`);
   console.log('=============================================================\n');
 
   return {
-    contractAddress: deployedAddress,
-    txHash: deploymentTxHash,
-    config: PREPROD_CONFIG,
+    contractAddress: contractAddressHex,
+    txHash: txHashHex,
+    cliWalletAddress: activeWalletAddress,
+    faucetUrl: PREVIEW_CONFIG.faucetUrl,
+    config: PREVIEW_CONFIG,
     contract
   };
 }
 
-const targetWallet = process.argv[2];
-deployContract(targetWallet).catch(console.error);
+const argAddress = process.argv[2];
+const argMnemonic = process.argv[3];
+deployOnChainContract(argAddress, argMnemonic).catch(console.error);

@@ -8,7 +8,7 @@ A privacy-preserving decentralized secret vault built on the **Midnight Network*
 
 ## 🌐 Live Production DApp & Repository Links
 
-- **Live Production DApp**: **[https://midnight-sanctuary.vercel.app](https://midnight-sanctuary.vercel.app)**
+- **Live Production DApp**: **[https://midnight-sanctuary-163bo8zh4-riyas-projects-dbf504d4.vercel.app](https://midnight-sanctuary-163bo8zh4-riyas-projects-dbf504d4.vercel.app)** (Primary Domain: **[https://midnight-sanctuary.vercel.app](https://midnight-sanctuary.vercel.app)**)
 - **GitHub Repository**: **[https://github.com/RiyaGithub123/SecretNotes](https://github.com/RiyaGithub123/SecretNotes)**
 
 ---

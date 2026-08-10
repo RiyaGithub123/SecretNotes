@@ -38,8 +38,26 @@ interface LedgerState {
   unlock_count: number;
 }
 
+// Section 7: Dynamic Wallet Provider Discovery
+async function discoverWalletProvider(timeoutMs = 5000, intervalMs = 500) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const w = (window as any).midnight;
+    if (w) {
+      for (const [key, provider] of Object.entries(w)) {
+        if (provider && (typeof (provider as any).connect === 'function' 
+                      || typeof (provider as any).enable === 'function')) {
+          return { key, provider: provider as any };
+        }
+      }
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return null;
+}
+
 export default function App() {
-  // Wallet & Diagnostic State
+  // Wallet & Connection State (Zero Mocking)
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletType, setWalletType] = useState<string | null>(null);
   const [walletAddress, setWalletAddress] = useState<string>('');
@@ -122,74 +140,89 @@ export default function App() {
     }
   }, [secretPassphrase]);
 
-  // Master Universal Wallet Connector
+  // Master Official DApp Connector Flow (Zero Mock / Zero Fallback Address)
   const handleConnectUniversal = async () => {
     setIsConnecting(true);
-    addLog('Connecting 1AM Wallet...');
+    addLog('Discovering Midnight wallet provider (1AM / Lace)...');
 
     try {
-      if (typeof window.midnight === 'undefined') {
-        addLog('❌ window.midnight not detected.');
+      // 1. Dynamic Wallet Provider Discovery (5s timeout)
+      const discovery = await discoverWalletProvider(5000);
+
+      if (!discovery) {
+        addLog('❌ No Midnight wallet extension (1AM / Lace) detected or unlocked in browser.');
+        setProofStatus('❌ Connection Failed: No Midnight wallet extension detected. Please install/unlock 1AM or Lace wallet.');
+        setWalletConnected(false);
         setIsConnecting(false);
         return;
       }
 
-      const midnightObj = window.midnight;
-      const keys = Object.keys(midnightObj);
-      const key = keys.find(k => k.toLowerCase() === '1am' || k.toLowerCase().includes('1am')) || keys[0];
+      const { key, provider } = discovery;
+      addLog(`Discovered provider under key: "${key}"`);
 
-      if (key && midnightObj[key]) {
-        const targetObj = midnightObj[key];
-        let api = null;
-
-        if (typeof targetObj.enable === 'function') {
-          api = await targetObj.enable();
-        } else if (typeof targetObj === 'function') {
-          api = await targetObj();
-        } else {
-          api = targetObj;
+      // 2. Official DApp Connector Flow: provider.connect('preprod') or provider.connect() or provider.enable()
+      let api = null;
+      if (typeof provider.connect === 'function') {
+        addLog(`Executing provider.connect('preprod')...`);
+        try {
+          api = await provider.connect('preprod');
+        } catch (e) {
+          addLog(`provider.connect('preprod') fallback, attempting provider.connect()...`);
+          api = await provider.connect();
         }
-
-        setWalletApi(api);
-        let addr = '';
-
-        if (api && api.state && typeof api.state === 'function') {
-          const st = await api.state();
-          addr = st.address || st.unshieldedAddress || st.shieldedAddress || '';
-        } else if (api && api.state && api.state.address) {
-          addr = api.state.address;
-        } else if (api && api.getAddress) {
-          addr = await api.getAddress();
-        }
-
-        if (!addr) {
-          addr = 'mn_preprod1q9x8a7b6c5d4e3f2g1h0j9i8u7y6t5r4e3w2q1';
-        }
-
-        setWalletAddress(addr);
-        setWalletConnected(true);
-        setWalletType(key);
-        addLog(`🎉 CONNECTED! Address: ${addr}`);
+      } else if (typeof provider.enable === 'function') {
+        addLog(`Executing provider.enable()...`);
+        api = await provider.enable();
       }
-    } catch (err: any) {
-      addLog(`⚠️ Connection Note: ${err.message || err}`);
-      const fallback = 'mn_preprod1q88a9z3x7v6u5t4r3e2w1q0p9o8n7m6l5k4j3h2g1';
-      setWalletAddress(fallback);
+
+      if (!api) {
+        throw new Error('Wallet connection request was cancelled or returned empty API session.');
+      }
+
+      // 3. Retrieve Genuine Wallet Address
+      let addr = '';
+      if (typeof api.state === 'function') {
+        const st = await api.state();
+        addr = st?.address || st?.shieldedAddress || st?.unshieldedAddress || '';
+      } else if (api.state?.address) {
+        addr = api.state.address;
+      } else if (typeof api.getAddress === 'function') {
+        addr = await api.getAddress();
+      } else if (typeof api.getAccounts === 'function') {
+        const accs = await api.getAccounts();
+        if (Array.isArray(accs) && accs.length > 0) addr = accs[0];
+      }
+
+      if (!addr || typeof addr !== 'string' || addr.trim() === '') {
+        throw new Error('Wallet API connected but did not expose an active wallet address.');
+      }
+
+      // 4. Mark Wallet Connected ONLY on Genuine Success
+      setWalletApi(api);
+      setWalletAddress(addr);
       setWalletConnected(true);
-      setWalletType('1AM');
-      addLog(`Connected address: ${fallback}`);
+      setWalletType(key);
+      addLog(`🎉 Genuine Wallet Connection Established! Address: ${addr}`);
+      setProofStatus(`✅ Connected to ${key} Wallet (${addr})`);
+    } catch (err: any) {
+      addLog(`❌ Connection Error: ${err.message || err}`);
+      setProofStatus(`❌ Wallet Connection Failed: ${err.message || 'Rejected by user'}`);
+      setWalletConnected(false);
+      setWalletAddress('');
+      setWalletApi(null);
     } finally {
       setIsConnecting(false);
     }
   };
 
-  // Disconnect Wallet Handler
+  // Disconnect Wallet Handler (Complete State Reset)
   const handleDisconnect = () => {
     setWalletConnected(false);
     setWalletType(null);
     setWalletAddress('');
     setWalletApi(null);
-    addLog('🔌 Wallet disconnected.');
+    addLog('🔌 Wallet disconnected successfully.');
+    setProofStatus('Disconnected from wallet.');
   };
 
   // 1. Setup Secret Note Circuit Call
@@ -262,9 +295,14 @@ export default function App() {
 
   // 3. Multi-Phase Preprod Contract Deployment Handler
   const handleDeployContract = async () => {
+    if (!walletConnected || !walletAddress) {
+      setProofStatus('❌ Deployment Error: Please connect a genuine Midnight wallet first before deploying.');
+      addLog('❌ Deployment blocked: Wallet not connected.');
+      return;
+    }
+
     setIsDeploying(true);
-    const targetAddr = walletAddress || 'mn_preprod1q88a9z3x7v6u5t4r3e2w1q0p9o8n7m6l5k4j3h2g1';
-    addLog(`Initiating deployment with wallet: ${targetAddr.slice(0, 14)}...`);
+    addLog(`Initiating deployment with connected wallet: ${walletAddress}...`);
     setProofStatus(`⚙️ Step 1/4: Initializing Compact v0.31.1 smart contract state...`);
 
     try {
@@ -275,7 +313,7 @@ export default function App() {
       // Phase 2: Wallet Transaction Request
       await new Promise(res => setTimeout(res, 800));
       if (walletApi && typeof walletApi.submitTx === 'function') {
-        setProofStatus(`💳 Step 3/4: Requesting 1AM Wallet transaction signature...`);
+        setProofStatus(`💳 Step 3/4: Requesting ${walletType || '1AM'} Wallet transaction signature...`);
         try {
           await walletApi.submitTx({ type: 'deploy', contract: 'secret_notes' });
         } catch (e) {
@@ -340,7 +378,7 @@ export default function App() {
                 <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
                 <div className="text-left">
                   <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
-                    {walletType || '1AM'} Wallet Connected
+                    {walletType || 'Midnight'} Wallet Connected
                   </p>
                   <p className="text-xs font-mono text-emerald-200 truncate max-w-[160px]">
                     {walletAddress}
@@ -369,7 +407,7 @@ export default function App() {
               ) : (
                 <Wallet className="w-5 h-5" />
               )}
-              Connect 1AM Wallet
+              Connect Midnight Wallet
             </button>
           )}
         </div>
@@ -417,15 +455,15 @@ export default function App() {
             </label>
             <input
               type="text"
-              value={walletAddress}
-              onChange={(e) => setWalletAddress(e.target.value)}
-              placeholder="Paste 1AM Wallet Address..."
-              className="w-full px-3 py-2 bg-emerald-950/90 border border-emerald-800 rounded-xl text-xs font-mono text-emerald-200 focus:outline-none focus:border-emerald-400"
+              readOnly
+              value={walletAddress || 'Not Connected (Connect Wallet First)'}
+              placeholder="Connect wallet to view address..."
+              className="w-full px-3 py-2 bg-emerald-950/90 border border-emerald-800 rounded-xl text-xs font-mono text-emerald-200 focus:outline-none"
             />
             <button
               type="button"
               onClick={handleDeployContract}
-              disabled={isDeploying}
+              disabled={isDeploying || !walletConnected}
               className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm rounded-xl shadow-lg shadow-emerald-500/30 transition duration-200 cursor-pointer disabled:opacity-50 active:scale-95"
             >
               {isDeploying ? (

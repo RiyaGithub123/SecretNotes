@@ -204,6 +204,39 @@ export default function App() {
       );
 
       setContractInstance(contract);
+
+      // Rehydrate local simulation state if it was already set up previously
+      try {
+        const savedStr = localStorage.getItem('midnight_sanctuary_ledger');
+        if (savedStr) {
+          const saved = JSON.parse(savedStr);
+          if (saved.note_hash && saved.note_hash !== '0x') {
+            const passBytes = new TextEncoder().encode(secretPassphrase.padEnd(32, '0')).slice(0, 32);
+            crypto.subtle.digest('SHA-256', passBytes).then(hashBuffer => {
+              const hashArray = new Uint8Array(hashBuffer);
+              try {
+                // Silently replay setup_note to reconstruct the WASM state pointers
+                const rehydrated = contract.impureCircuits.setup_note(ctx, hashArray);
+                let finalCtx = rehydrated.context;
+                
+                // If unlocked previously, fast-forward unlock state
+                if (saved.note_unlocked && saved.unlock_count > 0) {
+                    for (let i = 0; i < saved.unlock_count; i++) {
+                        const unlockResult = contract.impureCircuits.unlock_note(finalCtx, passBytes);
+                        finalCtx = unlockResult.context;
+                    }
+                }
+                setCircuitCtx(finalCtx);
+              } catch (e) {
+                console.error('State rehydration failed:', e);
+                setCircuitCtx(ctx);
+              }
+            });
+            return; // Context will be set async
+          }
+        }
+      } catch (e) {}
+
       setCircuitCtx(ctx);
     } catch (err) {
       console.error('Contract init error:', err);

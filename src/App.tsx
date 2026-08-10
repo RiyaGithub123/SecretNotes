@@ -131,8 +131,9 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
 
   // Contract & Deployment State (Preview Network Target)
-  const [contractAddress, setContractAddress] = useState<string>('0xe0b2f16ab494946249069862f12526abae0bba6f');
-  const [deployTxHash, setDeployTxHash] = useState<string | null>('0x002cfd1a651c833fb16a77f8e1f5442f59f13e4744140f006bd12d2de1c8f038');
+  const [contractAddress, setContractAddress] = useState<string>('0x02f80ff02c4a978d91f7ca751b33ce1c5259c477');
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployTxHash, setDeployTxHash] = useState<string | null>('0xa4c4bc9a240cc8dee668e22c34e6dfbb0510b12846ea569ce09aca8615c05183');
 
   // Public Ledger State
   const [ledgerState, setLedgerState] = useState<LedgerState>({
@@ -360,14 +361,14 @@ export default function App() {
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-wider font-cinzel bg-clip-text text-transparent bg-gradient-to-r from-[#f4e4bc] via-[#d4af37] to-[#b8860b]">
-                Midnight<span className="text-[#f4e4bc] font-mono text-2xl font-light">::SecretNotes</span>
+                Midnight<span className="text-[#f4e4bc] font-mono text-2xl font-light">::Sanctuary</span>
               </h1>
               <span className="px-3.5 py-1 text-[11px] neo-badge rounded-md font-cinzel font-bold uppercase tracking-widest">
                 Preview Network
               </span>
             </div>
             <p className="text-sm text-[#c5bca3] font-garamond italic text-base tracking-wide">
-              An Architectural Zero-Knowledge Vault on the Midnight Blockchain • Anno MMXXVI
+              Proved without revealing your input — A Neoclassical Zero-Knowledge Secret Vault built on Midnight Network using Compact v0.31.1.
             </p>
           </div>
         </div>

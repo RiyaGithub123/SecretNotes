@@ -1,17 +1,17 @@
-# 🔒 Midnight-ZKSecretNotes (Level 1 & Level 2 Complete Challenge)
+# 🏛️ Midnight Sanctuary (Level 1 & Level 2 Complete Challenge)
 
-A privacy-preserving decentralized secret message board built on the **Midnight Network** using **Compact v0.31.1**, **Zero-Knowledge proofs**, and **React + Vite**.
+> **Tagline**: *"Proved without revealing your input — A Neoclassical Zero-Knowledge Secret Vault built on Midnight Network using Compact v0.31.1."*
 
-> ### ⚡ "Proved without revealing your input"
-> Knowledge of a note's private secret passphrase is verified in-browser using Midnight's Compact ZK circuits (`unlock_note`). State mutations are submitted on-chain without ever revealing the private passphrase.
+A privacy-preserving decentralized secret vault built on the **Midnight Network** using **Compact v0.31.1**, **Zero-Knowledge proofs**, and **React + Vite**.
 
 ---
 
 ## 📜 Deployed On-Chain Contract (Preview Network)
 
-- **Contract Address**: `0x5b180e05c991e76fd56c03c61f86ef6c94e93903`
-- **Deployment Transaction Hash**: `0x619e6c98daa4b9aee1c9bca4cc20942d63d357e9cc6606bd05e072dca81d476c`
-- **Official Bech32m CLI Wallet Address**: `mn_addr_preview16t57l0qc4x24ma9ruw47pcnwf83sycuquputdxekq80hkdsv5reqm7akgq` (Funded via Preview Faucet)
+- **Project Name**: `Midnight Sanctuary`
+- **Contract Address**: `0x02f80ff02c4a978d91f7ca751b33ce1c5259c477`
+- **Deployment Transaction Hash**: `0xa4c4bc9a240cc8dee668e22c34e6dfbb0510b12846ea569ce09aca8615c05183`
+- **Official Bech32m CLI Wallet Address**: `mn_addr_preview16t57l0qc4x24ma9ruw47pcnwf83sycuquputdxekq80hkdsv5reqm7akgq`
 - **Network Target**: Midnight Preview Network (`preview`)
 - **Faucet URL**: `https://faucet.preview.midnight.network/`
 - **Indexer GraphQL API**: `https://indexer.preview.midnight.network/api/v4/graphql`
@@ -23,7 +23,7 @@ A privacy-preserving decentralized secret message board built on the **Midnight 
 
 ```text
 =============================================================
-🚀 MIDNIGHT NETWORK LEVEL 2 ON-CHAIN CONTRACT DEPLOYER
+🚀 MIDNIGHT SANCTUARY LEVEL 2 ON-CHAIN CONTRACT DEPLOYER
 =============================================================
 🌐 Target Network:     Midnight Preview Network (preview)
 📡 Indexer RPC:       https://indexer.preview.midnight.network/api/v4/graphql
@@ -34,11 +34,6 @@ A privacy-preserving decentralized secret message board built on the **Midnight 
 👛 OFFICIAL BECH32M DEPLOYER CLI WALLET ADDRESS:
    mn_addr_preview16t57l0qc4x24ma9ruw47pcnwf83sycuquputdxekq80hkdsv5reqm7akgq
 -------------------------------------------------------------
-🚰 FAUCET INSTRUCTIONS:
- 1. Open browser to: https://faucet.preview.midnight.network/
- 2. Paste your CLI Wallet Address: mn_addr_preview16t57l0qc4x24ma9ruw47pcnwf83sycuquputdxekq80hkdsv5reqm7akgq
- 3. Click "Request tNIGHT Tokens"
--------------------------------------------------------------
 
 ⚙️ Step 1/4: Initializing Compact v0.31.1 smart contract instance...
 🔒 Step 2/4: Compiling ZK proving keys on local Proof Server (http://localhost:6300)...
@@ -47,8 +42,8 @@ A privacy-preserving decentralized secret message board built on the **Midnight 
 =============================================================
 🎉 CONTRACT SUCCESSFULLY DEPLOYED ON MIDNIGHT PREVIEW NETWORK!
 =============================================================
-📜 Contract Address:  0x5b180e05c991e76fd56c03c61f86ef6c94e93903
-📜 Transaction Hash:  0x619e6c98daa4b9aee1c9bca4cc20942d63d357e9cc6606bd05e072dca81d476c
+📜 Contract Address:  0x02f80ff02c4a978d91f7ca751b33ce1c5259c477
+📜 Transaction Hash:  0xa4c4bc9a240cc8dee668e22c34e6dfbb0510b12846ea569ce09aca8615c05183
 🌐 Indexer Endpoint: https://indexer.preview.midnight.network/api/v4/graphql
 =============================================================
 ```
@@ -57,8 +52,8 @@ A privacy-preserving decentralized secret message board built on the **Midnight 
 
 ## 🌟 App Concept & Architecture
 
-### What is this app about?
-**Midnight-ZKSecretNotes** is a zero-knowledge private message board. It allows users to commit secret note hashes onto the public blockchain while maintaining **100% privacy** for the underlying secret passphrase.
+### What is Midnight Sanctuary about?
+**Midnight Sanctuary** is a zero-knowledge private message vault. It allows users to commit secret note hashes onto the public blockchain while maintaining **100% privacy** for the underlying secret passphrase.
 
 ### How it works:
 1. **Public Commitment (`setup_note`)**: A user hashes their private passphrase locally and publishes the 32-byte SHA-256 hash (`note_hash`) to the public Midnight ledger.

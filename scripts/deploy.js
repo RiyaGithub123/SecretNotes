@@ -37,7 +37,7 @@ function askQuestion(query) {
 
 export async function deployOnChainContract(targetAddress, customMnemonic) {
   console.log('\n=============================================================');
-  console.log('🚀 MIDNIGHT NETWORK LEVEL 2 ON-CHAIN CONTRACT DEPLOYER');
+  console.log('🚀 MIDNIGHT SANCTUARY LEVEL 2 ON-CHAIN CONTRACT DEPLOYER');
   console.log('=============================================================');
   console.log(`🌐 Target Network:     Midnight Preview Network (preview)`);
   console.log(`📡 Indexer RPC:       ${PREVIEW_CONFIG.indexerUrl}`);

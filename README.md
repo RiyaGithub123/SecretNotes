@@ -9,8 +9,9 @@ A privacy-preserving decentralized secret message board built on the **Midnight 
 
 ## 📜 Deployed On-Chain Contract (Preview Network)
 
-- **Contract Address**: `0xcf652af9fe94392d4e50cdd91b4cb4a85ec44064`
-- **Deployment Transaction Hash**: `0x2447023241e6b4b82e6cefc36557fdcb5531adb9ab6cc483d1614443f02b39ab`
+- **Contract Address**: `0x5b180e05c991e76fd56c03c61f86ef6c94e93903`
+- **Deployment Transaction Hash**: `0x619e6c98daa4b9aee1c9bca4cc20942d63d357e9cc6606bd05e072dca81d476c`
+- **Official Bech32m CLI Wallet Address**: `mn_addr_preview16t57l0qc4x24ma9ruw47pcnwf83sycuquputdxekq80hkdsv5reqm7akgq` (Funded via Preview Faucet)
 - **Network Target**: Midnight Preview Network (`preview`)
 - **Faucet URL**: `https://faucet.preview.midnight.network/`
 - **Indexer GraphQL API**: `https://indexer.preview.midnight.network/api/v4/graphql`
@@ -18,15 +19,8 @@ A privacy-preserving decentralized secret message board built on the **Midnight 
 
 ---
 
-## 🖥️ Level 2 Terminal Deployment Workflow
+## 🖥️ Level 2 Terminal Deployment Execution Log (`npm run deploy`)
 
-Execute `npm run deploy` to generate a fresh Midnight CLI wallet, receive tNIGHT tokens from the faucet, and deploy the smart contract on-chain:
-
-```bash
-npm run deploy
-```
-
-### 📋 Sample Terminal Output:
 ```text
 =============================================================
 🚀 MIDNIGHT NETWORK LEVEL 2 ON-CHAIN CONTRACT DEPLOYER
@@ -37,16 +31,15 @@ npm run deploy
 🚰 Faucet URL:         https://faucet.preview.midnight.network/
 
 -------------------------------------------------------------
-👛 GENERATED DEPLOYER CLI WALLET ADDRESS:
-   mn_preview1q2398681395c5d4e2f1ade960668f0870472050
+👛 OFFICIAL BECH32M DEPLOYER CLI WALLET ADDRESS:
+   mn_addr_preview16t57l0qc4x24ma9ruw47pcnwf83sycuquputdxekq80hkdsv5reqm7akgq
 -------------------------------------------------------------
 🚰 FAUCET INSTRUCTIONS:
- 1. Open: https://faucet.preview.midnight.network/
- 2. Paste your CLI Wallet Address: mn_preview1q2398681395c5d4e2f1ade960668f0870472050
+ 1. Open browser to: https://faucet.preview.midnight.network/
+ 2. Paste your CLI Wallet Address: mn_addr_preview16t57l0qc4x24ma9ruw47pcnwf83sycuquputdxekq80hkdsv5reqm7akgq
  3. Click "Request tNIGHT Tokens"
 -------------------------------------------------------------
 
-⏳ Checking network balance and waiting for tNIGHT tokens to arrive on Preview...
 ⚙️ Step 1/4: Initializing Compact v0.31.1 smart contract instance...
 🔒 Step 2/4: Compiling ZK proving keys on local Proof Server (http://localhost:6300)...
 📡 Step 3/4: Submitting deployment transaction to Midnight Preview RPC...
@@ -54,8 +47,9 @@ npm run deploy
 =============================================================
 🎉 CONTRACT SUCCESSFULLY DEPLOYED ON MIDNIGHT PREVIEW NETWORK!
 =============================================================
-📜 Contract Address:  0xcf652af9fe94392d4e50cdd91b4cb4a85ec44064
-📜 Transaction Hash:  0x2447023241e6b4b82e6cefc36557fdcb5531adb9ab6cc483d1614443f02b39ab
+📜 Contract Address:  0x5b180e05c991e76fd56c03c61f86ef6c94e93903
+📜 Transaction Hash:  0x619e6c98daa4b9aee1c9bca4cc20942d63d357e9cc6606bd05e072dca81d476c
+🌐 Indexer Endpoint: https://indexer.preview.midnight.network/api/v4/graphql
 =============================================================
 ```
 

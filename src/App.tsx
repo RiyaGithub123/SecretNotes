@@ -137,9 +137,9 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
 
   // Contract & Deployment State (Preview Network Target)
-  const [contractAddress, setContractAddress] = useState<string>('0xcf652af9fe94392d4e50cdd91b4cb4a85ec44064');
+  const [contractAddress, setContractAddress] = useState<string>('0x5b180e05c991e76fd56c03c61f86ef6c94e93903');
   const [isDeploying, setIsDeploying] = useState(false);
-  const [deployTxHash, setDeployTxHash] = useState<string | null>('0x2447023241e6b4b82e6cefc36557fdcb5531adb9ab6cc483d1614443f02b39ab');
+  const [deployTxHash, setDeployTxHash] = useState<string | null>('0x619e6c98daa4b9aee1c9bca4cc20942d63d357e9cc6606bd05e072dca81d476c');
 
   // Public Ledger State
   const [ledgerState, setLedgerState] = useState<LedgerState>({

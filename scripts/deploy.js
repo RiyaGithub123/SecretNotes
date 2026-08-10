@@ -1,5 +1,7 @@
 import bip39 from 'bip39';
 import crypto from 'crypto';
+import readline from 'readline';
+import { UnshieldedAddress, MidnightBech32m } from '@midnight-ntwrk/wallet-sdk-address-format';
 import { Contract } from '../managed/contract/index.js';
 
 export const PREVIEW_CONFIG = {
@@ -11,12 +13,26 @@ export const PREVIEW_CONFIG = {
   proofServerUrl: 'http://localhost:6300',
 };
 
-export function generateMidnightCliWallet() {
+export function generateMidnightCliWallet(networkId = 'preview') {
   const mnemonic = bip39.generateMnemonic();
   const seed = bip39.mnemonicToSeedSync(mnemonic);
-  const hashHex = crypto.createHmac('sha256', seed).update('Midnight.Preview.Wallet.v1').digest('hex');
-  const address = 'mn_preview1q' + hashHex.slice(0, 38);
-  return { mnemonic, address, seed };
+  const entropy = seed.subarray(0, 32);
+  const unshieldedAddrObj = new UnshieldedAddress(entropy);
+  const bech32Address = MidnightBech32m.encode(networkId, unshieldedAddrObj).toString();
+  return { mnemonic, address: bech32Address, seed };
+}
+
+function askQuestion(query) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return new Promise((resolve) =>
+    rl.question(query, (ans) => {
+      rl.close();
+      resolve(ans);
+    })
+  );
 }
 
 export async function deployOnChainContract(targetAddress, customMnemonic) {
@@ -31,28 +47,34 @@ export async function deployOnChainContract(targetAddress, customMnemonic) {
   let cliWallet;
   if (customMnemonic && bip39.validateMnemonic(customMnemonic)) {
     const seed = bip39.mnemonicToSeedSync(customMnemonic);
-    const hashHex = crypto.createHmac('sha256', seed).update('Midnight.Preview.Wallet.v1').digest('hex');
-    cliWallet = { mnemonic: customMnemonic, address: 'mn_preview1q' + hashHex.slice(0, 38), seed };
+    const entropy = seed.subarray(0, 32);
+    const unshieldedAddrObj = new UnshieldedAddress(entropy);
+    const bech32Address = MidnightBech32m.encode('preview', unshieldedAddrObj).toString();
+    cliWallet = { mnemonic: customMnemonic, address: bech32Address, seed };
   } else {
-    cliWallet = generateMidnightCliWallet();
+    cliWallet = generateMidnightCliWallet('preview');
   }
 
   const activeWalletAddress = targetAddress || cliWallet.address;
 
   console.log('\n-------------------------------------------------------------');
-  console.log('👛 GENERATED DEPLOYER CLI WALLET ADDRESS:');
+  console.log('👛 OFFICIAL BECH32M DEPLOYER CLI WALLET ADDRESS:');
   console.log(`   ${activeWalletAddress}`);
   console.log('-------------------------------------------------------------');
   console.log('🚰 FAUCET INSTRUCTIONS:');
-  console.log(` 1. Open: ${PREVIEW_CONFIG.faucetUrl}`);
+  console.log(` 1. Open browser to: ${PREVIEW_CONFIG.faucetUrl}`);
   console.log(` 2. Paste your CLI Wallet Address: ${activeWalletAddress}`);
   console.log(' 3. Click "Request tNIGHT Tokens"');
   console.log('-------------------------------------------------------------\n');
 
-  console.log('⏳ Checking network balance and waiting for tNIGHT tokens to arrive on Preview...');
-  await new Promise((res) => setTimeout(res, 2000));
+  if (process.stdout.isTTY) {
+    await askQuestion('👉 Press ENTER once you have claimed tNIGHT tokens from the faucet to broadcast deployment...');
+  } else {
+    console.log('⏳ Non-interactive execution detected. Proceeding with network deployment...');
+    await new Promise(res => setTimeout(res, 1500));
+  }
 
-  console.log('⚙️ Step 1/4: Initializing Compact v0.31.1 smart contract instance...');
+  console.log('\n⚙️ Step 1/4: Initializing Compact v0.31.1 smart contract instance...');
   const passBytes = new Uint8Array(cliWallet.seed.subarray(0, 32));
   const contract = new Contract({
     passphrase: (ctx) => [ctx.privateState, passBytes],

@@ -469,12 +469,20 @@ export default function App() {
 
     } catch (err: any) {
       const elapsed = Math.round(performance.now() - startTime);
-      addLog(`❌ ZK Proof Rejected: ${err.message || err}`);
+      const isMismatch = String(err.message || err).includes('Invalid passphrase provided');
+      if (isMismatch) {
+        addLog(`❌ Passphrase Mismatch: The passphrase entered in Circuit II does not match the secret passphrase committed in Circuit I.`);
+        addLog(`💡 Ensure your Circuit II input matches "${secretPassphrase}" or click "Auto-fill from Circuit I".`);
+      } else {
+        addLog(`❌ ZK Proof Rejected: ${err.message || err}`);
+      }
       setActiveReceipt({
         circuit: 'unlock_note(provided_passphrase: Bytes<32>)',
         witnessHex: '',
         status: 'failed',
-        statusMessage: `ZK Proof Rejected: Invalid passphrase witness proof`,
+        statusMessage: isMismatch 
+          ? `ZK Proof Rejected: Mismatched passphrase. Input does not match Circuit I secret.`
+          : `ZK Proof Rejected: ${err.message}`,
         receiptHash: null,
         timestamp: new Date().toLocaleTimeString(),
         executionMs: elapsed
@@ -738,9 +746,18 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-wider mb-2">
-                  Enter Private Passphrase to Verify Access
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-wider">
+                    Enter Private Passphrase to Verify Access
+                  </label>
+                  {secretPassphrase && (
+                    <button type="button"
+                      onClick={() => setPassphraseInput(secretPassphrase)}
+                      className="text-[10px] font-mono text-[#d4af37] hover:text-[#f4e4bc] underline transition cursor-pointer">
+                      Auto-fill from Circuit I
+                    </button>
+                  )}
+                </div>
                 <input type="password" placeholder="Enter secret passphrase to generate ZK proof..."
                   value={passphraseInput} onChange={(e) => setPassphraseInput(e.target.value)}
                   className="w-full px-4 py-3.5 bg-[#07080b] border border-[#d4af37]/50 rounded-xl text-sm font-mono text-white placeholder-[#7a7058] focus:outline-none focus:border-[#f4e4bc]" />

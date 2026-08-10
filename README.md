@@ -6,6 +6,13 @@ A privacy-preserving decentralized secret vault built on the **Midnight Network*
 
 ---
 
+## 🌐 Live Production DApp & Repository Links
+
+- **Live Production DApp**: **[https://midnight-sanctuary.vercel.app](https://midnight-sanctuary.vercel.app)**
+- **GitHub Repository**: **[https://github.com/RiyaGithub123/SecretNotes](https://github.com/RiyaGithub123/SecretNotes)**
+
+---
+
 ## 📜 Deployed On-Chain Contract (Preview Network)
 
 - **Project Name**: `Midnight Sanctuary`

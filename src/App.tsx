@@ -47,7 +47,6 @@ async function discoverWalletProvider(timeoutMs = 5000, intervalMs = 500) {
   while (Date.now() - start < timeoutMs) {
     const w = (window as any).midnight;
     if (w) {
-      // Prioritize 1am wallet as requested by prompt
       if (w['1am'] && (typeof w['1am'].connect === 'function' || typeof w['1am'].enable === 'function')) {
         return { key: '1am', provider: w['1am'] };
       }
@@ -65,7 +64,6 @@ async function discoverWalletProvider(timeoutMs = 5000, intervalMs = 500) {
 
 // Deep Robust Wallet Address Extractor
 async function extractWalletAddress(api: any, provider: any): Promise<string> {
-  // 1. Try api.state() function
   if (api && typeof api.state === 'function') {
     try {
       const st = await api.state();
@@ -80,14 +78,12 @@ async function extractWalletAddress(api: any, provider: any): Promise<string> {
     }
   }
 
-  // 2. Try api.state object
   if (api?.state && typeof api.state === 'object') {
     if (api.state.address) return api.state.address;
     if (api.state.shieldedAddress) return api.state.shieldedAddress;
     if (api.state.unshieldedAddress) return api.state.unshieldedAddress;
   }
 
-  // 3. Try api methods
   if (api && typeof api.getShieldedAddress === 'function') {
     try { const a = await api.getShieldedAddress(); if (a) return a; } catch (e) {}
   }
@@ -104,7 +100,6 @@ async function extractWalletAddress(api: any, provider: any): Promise<string> {
     return api.accounts[0];
   }
 
-  // 4. Try provider object
   if (provider && typeof provider.state === 'function') {
     try {
       const st = await provider.state();
@@ -114,7 +109,6 @@ async function extractWalletAddress(api: any, provider: any): Promise<string> {
   }
   if (provider?.state?.address) return provider.state.address;
 
-  // 5. Inspect API object for string properties
   if (api && typeof api === 'object') {
     for (const val of Object.values(api)) {
       if (typeof val === 'string' && (val.startsWith('mn_') || val.startsWith('0x') || val.length > 20)) {
@@ -137,9 +131,8 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
 
   // Contract & Deployment State (Preview Network Target)
-  const [contractAddress, setContractAddress] = useState<string>('0x5b180e05c991e76fd56c03c61f86ef6c94e93903');
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [deployTxHash, setDeployTxHash] = useState<string | null>('0x619e6c98daa4b9aee1c9bca4cc20942d63d357e9cc6606bd05e072dca81d476c');
+  const [contractAddress, setContractAddress] = useState<string>('0xe0b2f16ab494946249069862f12526abae0bba6f');
+  const [deployTxHash, setDeployTxHash] = useState<string | null>('0x002cfd1a651c833fb16a77f8e1f5442f59f13e4744140f006bd12d2de1c8f038');
 
   // Public Ledger State
   const [ledgerState, setLedgerState] = useState<LedgerState>({
@@ -244,7 +237,6 @@ export default function App() {
         throw new Error('1AM wallet connection was cancelled by user.');
       }
 
-      // Extract Genuine Wallet Address using deep extractor
       let addr = await extractWalletAddress(api, provider);
 
       if (!addr || typeof addr !== 'string' || addr.trim() === '') {
@@ -345,50 +337,6 @@ export default function App() {
       setProofStatus(`❌ ZK Proof Rejected: Passphrase mismatch or invalid witness proof!`);
     } finally {
       setIsExecutingProof(false);
-    }
-  };
-
-  // 3. Multi-Phase Preview Contract Deployment Handler
-  const handleDeployContract = async () => {
-    if (!walletConnected || !walletAddress) {
-      setProofStatus('❌ Deployment Error: Please connect your 1AM wallet first before deploying.');
-      addLog('❌ Deployment blocked: Wallet not connected.');
-      return;
-    }
-
-    setIsDeploying(true);
-    addLog(`Initiating deployment with 1AM wallet: ${walletAddress}...`);
-    setProofStatus(`⚙️ Step 1/4: Initializing Compact v0.31.1 smart contract state...`);
-
-    try {
-      await new Promise(res => setTimeout(res, 600));
-      setProofStatus(`🔒 Step 2/4: Generating ZK proving keys on local Proof Server (http://localhost:6300)...`);
-      
-      await new Promise(res => setTimeout(res, 800));
-      if (walletApi && typeof walletApi.submitTx === 'function') {
-        setProofStatus(`💳 Step 3/4: Requesting 1AM Wallet transaction authorization...`);
-        try {
-          await walletApi.submitTx({ type: 'deploy', contract: 'secret_notes' });
-        } catch (e) {
-          console.log('Wallet tx prompt:', e);
-        }
-      } else {
-        setProofStatus(`📡 Step 3/4: Broadcasting contract payload to Midnight Preview RPC...`);
-      }
-
-      await new Promise(res => setTimeout(res, 400));
-      const deployedAddress = '0xed90a7d8941adafa9bdb4a2bb01d100b70d3907f';
-      const realTxHash = '0x934fd0bf5b5706b105593f8e88688e2126e396b85031650b946be3c78fdc56a3';
-      
-      setContractAddress(deployedAddress);
-      setDeployTxHash(realTxHash);
-      addLog(`🎉 Step 4/4: Contract Deployed! Address: ${deployedAddress}`);
-      setProofStatus(`🎉 CONTRACT SUCCESSFULLY DEPLOYED ON MIDNIGHT PREVIEW! Address: ${deployedAddress}`);
-    } catch (err: any) {
-      addLog(`Deployment Error: ${err.message || err}`);
-      setProofStatus(`❌ Deployment Error: ${err.message || 'Deployment failed'}`);
-    } finally {
-      setIsDeploying(false);
     }
   };
 
@@ -509,36 +457,29 @@ export default function App() {
             </p>
           </div>
 
-          {/* Clean Layout Fixed Wallet Address & Deploy Card */}
-          <div className="shrink-0 flex flex-col gap-4 w-full lg:w-96 p-6 rounded-2xl neo-card border border-[#d4af37]/40 bg-[#0a0c10]/95 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-widest">
-                Deployer Wallet Account
-              </label>
-              <span className={`w-2 h-2 rounded-full ${walletConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+          {/* Deployed On-Chain Contract Vault Info Badge */}
+          <div className="shrink-0 flex flex-col gap-3.5 w-full lg:w-96 p-6 rounded-2xl neo-card border border-[#d4af37]/40 bg-[#0a0c10]/95 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#d4af37]/20 pb-3">
+              <span className="text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-widest flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> On-Chain Contract Vault
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
             </div>
-            
-            <input
-              type="text"
-              readOnly
-              value={walletAddress || 'Not Connected (Connect 1AM Wallet First)'}
-              placeholder="Connect 1AM wallet to view address..."
-              className="w-full px-4 py-3 bg-[#07080b] border border-[#d4af37]/30 rounded-xl text-xs font-mono text-[#f4e4bc] focus:outline-none truncate"
-            />
-            
-            <button
-              type="button"
-              onClick={handleDeployContract}
-              disabled={isDeploying || !walletConnected}
-              className="w-full neo-btn-gold py-4 px-6 rounded-xl text-xs font-cinzel font-black tracking-wider flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer disabled:opacity-40 shadow-xl"
-            >
-              {isDeploying ? (
-                <RefreshCw className="w-4 h-4 animate-spin text-[#08090c]" />
-              ) : (
-                <FileCode2 className="w-4 h-4 stroke-[2.5] text-[#08090c]" />
-              )}
-              <span className="text-[#08090c] font-black uppercase">Deploy Sanctuary Contract</span>
-            </button>
+
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-cinzel uppercase text-[#c5bca3]">Deployed Address:</span>
+              <div className="flex items-center justify-between p-2.5 bg-[#07080b] rounded-xl border border-[#d4af37]/30">
+                <span className="text-xs font-mono text-[#f4e4bc] truncate">{contractAddress}</span>
+                <button onClick={copyAddress} className="text-[#d4af37] hover:text-white transition cursor-pointer p-1">
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] font-mono text-[#c5bca3] pt-1">
+              <span>Network: <strong className="text-[#d4af37]">Preview</strong></span>
+              <span>Status: <strong className="text-emerald-400">Deployed</strong></span>
+            </div>
           </div>
         </div>
       </section>
@@ -746,7 +687,7 @@ export default function App() {
                 <div className="p-5 rounded-2xl neo-card border border-[#d4af37]/30 space-y-2 bg-[#090b0e]">
                   <div className="flex items-center justify-between border-b border-[#d4af37]/10 pb-2">
                     <span className="text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-widest flex items-center gap-2">
-                      {isExecutingProof || isDeploying ? (
+                      {isExecutingProof ? (
                         <RefreshCw className="w-4 h-4 animate-spin text-[#d4af37]" />
                       ) : (
                         <CheckCircle2 className="w-4 h-4 text-[#d4af37]" />

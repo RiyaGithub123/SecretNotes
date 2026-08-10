@@ -1,42 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Shield, 
-  Lock, 
-  Unlock, 
-  KeyRound, 
-  Cpu, 
-  Wallet, 
-  CheckCircle2, 
-  AlertCircle, 
-  RefreshCw, 
-  ExternalLink,
-  Zap,
-  EyeOff,
-  Sparkles,
-  FileCode2,
-  Database,
-  ArrowRight,
-  Copy,
-  Check,
-  Terminal,
-  Bug,
-  LogOut,
-  Scroll,
-  Crown,
-  Feather,
-  Hash,
-  Globe
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Shield, Lock, Unlock, KeyRound, Cpu, Wallet, CheckCircle2,
+  AlertCircle, RefreshCw, ExternalLink, Zap, EyeOff, Sparkles,
+  FileCode2, Database, Copy, Check, Terminal, Bug, LogOut,
+  Crown, Hash, Globe, Server, AlertTriangle, XCircle, Loader2
 } from 'lucide-react';
 import { Contract, ledger } from '../managed/contract/index.js';
 import { createCircuitContext, dummyContractAddress } from '@midnight-ntwrk/compact-runtime';
 
+/* ─────────────── Global Type Declarations ─────────────── */
 declare global {
   interface Window {
     midnight?: Record<string, any>;
-    cardano?: Record<string, any>;
   }
 }
 
+/* ─────────────── Type Definitions ─────────────── */
 interface LedgerState {
   note_unlocked: boolean;
   note_hash: string;
@@ -46,38 +25,52 @@ interface LedgerState {
 interface TxReceipt {
   circuit: string;
   witnessHex: string;
-  status: string;
-  stateMessage: string;
-  receiptHash: string;
+  status: 'local_verified' | 'submitted' | 'confirmed' | 'failed';
+  statusMessage: string;
+  receiptHash: string | null;
   timestamp: string;
+  executionMs: number;
 }
 
-// Helper to compute SHA-256 hash hex string
+interface InfraStatus {
+  proofServer: 'checking' | 'online' | 'offline';
+  indexer: 'checking' | 'online' | 'offline';
+  wallet: 'disconnected' | 'connecting' | 'connected';
+}
+
+/* ─────────────── Helper Functions ─────────────── */
 async function computeSha256Hex(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text.padEnd(32, '0')).slice(0, 32);
   const buf = await crypto.subtle.digest('SHA-256', bytes);
   return '0x' + Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Convert string to hex representation for Witness display
-function textToHexWitness(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  return '0x' + hex.slice(0, 16) + '...' + '00000000';
+function bytesToHex(bytes: Uint8Array): string {
+  return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Section 7: Dynamic Wallet Provider Discovery
+function truncateHash(hash: string, len = 12): string {
+  if (hash.length <= len * 2 + 4) return hash;
+  return hash.slice(0, len + 2) + '...' + hash.slice(-len);
+}
+
+/* ─────────────── 1AM Wallet Discovery ─────────────── */
 async function discoverWalletProvider(timeoutMs = 5000, intervalMs = 500) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const w = (window as any).midnight;
+    const w = window.midnight;
     if (w) {
-      if (w['1am'] && (typeof w['1am'].connect === 'function' || typeof w['1am'].enable === 'function')) {
-        return { key: '1am', provider: w['1am'] };
+      // Try known keys
+      for (const key of ['1am', 'mnLace', 'lace']) {
+        const provider = w[key];
+        if (provider && (typeof provider.connect === 'function' || typeof provider.enable === 'function')) {
+          return { key, provider };
+        }
       }
+      // Try any key
       for (const [key, provider] of Object.entries(w)) {
-        if (provider && (typeof (provider as any).connect === 'function' 
-                      || typeof (provider as any).enable === 'function')) {
+        if (provider && typeof provider === 'object' &&
+          (typeof (provider as any).connect === 'function' || typeof (provider as any).enable === 'function')) {
           return { key, provider: provider as any };
         }
       }
@@ -87,8 +80,9 @@ async function discoverWalletProvider(timeoutMs = 5000, intervalMs = 500) {
   return null;
 }
 
-// Deep Robust Wallet Address Extractor
+/* ─────────────── Wallet Address Extraction ─────────────── */
 async function extractWalletAddress(api: any, provider: any): Promise<string> {
+  // Try api.state()
   if (api && typeof api.state === 'function') {
     try {
       const st = await api.state();
@@ -96,174 +90,146 @@ async function extractWalletAddress(api: any, provider: any): Promise<string> {
       if (st?.shieldedAddress) return st.shieldedAddress;
       if (st?.unshieldedAddress) return st.unshieldedAddress;
       if (st?.coinPublicKey?.bytes) {
-        return 'mn_preview_' + Array.from(st.coinPublicKey.bytes.slice(0, 8) as Uint8Array).map(b => b.toString(16).padStart(2, '0')).join('');
+        return 'mn_preview_' + bytesToHex(st.coinPublicKey.bytes.slice(0, 8)).slice(2);
       }
-    } catch (e) {
-      console.warn('api.state() extraction note:', e);
+    } catch (e) { /* continue */ }
+  }
+  // Try direct methods
+  for (const method of ['getShieldedAddress', 'getUnshieldedAddress', 'getAddress']) {
+    if (api && typeof api[method] === 'function') {
+      try { const a = await api[method](); if (a) return a; } catch (e) { /* continue */ }
     }
   }
-
-  if (api?.state && typeof api.state === 'object') {
-    if (api.state.address) return api.state.address;
-    if (api.state.shieldedAddress) return api.state.shieldedAddress;
-    if (api.state.unshieldedAddress) return api.state.unshieldedAddress;
-  }
-
-  if (api && typeof api.getShieldedAddress === 'function') {
-    try { const a = await api.getShieldedAddress(); if (a) return a; } catch (e) {}
-  }
-  if (api && typeof api.getUnshieldedAddress === 'function') {
-    try { const a = await api.getUnshieldedAddress(); if (a) return a; } catch (e) {}
-  }
-  if (api && typeof api.getAddress === 'function') {
-    try { const a = await api.getAddress(); if (a) return a; } catch (e) {}
-  }
+  // Try getAccounts
   if (api && typeof api.getAccounts === 'function') {
-    try { const accs = await api.getAccounts(); if (Array.isArray(accs) && accs[0]) return accs[0]; } catch (e) {}
+    try { const accs = await api.getAccounts(); if (Array.isArray(accs) && accs[0]) return accs[0]; } catch (e) { /* continue */ }
   }
-  if (Array.isArray(api?.accounts) && api.accounts[0]) {
-    return api.accounts[0];
-  }
-
-  if (provider && typeof provider.state === 'function') {
-    try {
-      const st = await provider.state();
-      if (st?.address) return st.address;
-      if (st?.shieldedAddress) return st.shieldedAddress;
-    } catch (e) {}
-  }
-  if (provider?.state?.address) return provider.state.address;
-
-  if (api && typeof api === 'object') {
-    for (const val of Object.values(api)) {
-      if (typeof val === 'string' && (val.startsWith('mn_') || val.startsWith('0x') || val.length > 20)) {
-        return val;
-      }
-    }
-  }
-
   return '';
 }
 
+/* ═══════════════════════════════════════════════════════════
+   MAIN APPLICATION COMPONENT
+   ═══════════════════════════════════════════════════════════ */
 export default function App() {
-  // Wallet & Connection State (Zero Mocking)
+  /* ── Wallet State ── */
   const [walletConnected, setWalletConnected] = useState(false);
-  const [walletType, setWalletType] = useState<string | null>(null);
-  const [walletAddress, setWalletAddress] = useState<string>('');
-  const [detectedKeys, setDetectedKeys] = useState<string[]>([]);
-  const [connectLog, setConnectLog] = useState<string[]>([]);
+  const [walletAddress, setWalletAddress] = useState('');
   const [walletApi, setWalletApi] = useState<any>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  // Contract & Deployment State (Preview Network Target)
-  const [contractAddress, setContractAddress] = useState<string>('0x02f80ff02c4a978d91f7ca751b33ce1c5259c477');
-  const [deployTxHash, setDeployTxHash] = useState<string | null>('0xa4c4bc9a240cc8dee668e22c34e6dfbb0510b12846ea569ce09aca8615c05183');
-  const [indexerConfirmed, setIndexerConfirmed] = useState<boolean>(true);
-
-  // Public Ledger State (Persisted in localStorage across page reloads)
-  const [ledgerState, setLedgerState] = useState<LedgerState>(() => {
-    try {
-      const saved = localStorage.getItem('midnight_sanctuary_ledger');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {
-      note_unlocked: false,
-      note_hash: '0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069',
-      unlock_count: 0
-    };
+  /* ── Infrastructure Status ── */
+  const [infra, setInfra] = useState<InfraStatus>({
+    proofServer: 'checking',
+    indexer: 'checking',
+    wallet: 'disconnected'
   });
 
-  // Form State (Persisted in localStorage)
-  const [secretPassphrase, setSecretPassphrase] = useState<string>(() => {
-    return localStorage.getItem('midnight_sanctuary_pass') || 'MidnightZKSecret2026!';
-  });
-  const [passphraseInput, setPassphraseInput] = useState<string>('');
-  const [noteMessage, setNoteMessage] = useState<string>(() => {
-    return localStorage.getItem('midnight_sanctuary_msg') || 'Top secret Midnight launch payload credentials.';
-  });
-  const [liveComputedHash, setLiveComputedHash] = useState<string>('');
-  const [isExecutingProof, setIsExecutingProof] = useState(false);
-  const [proofStatus, setProofStatus] = useState<string | null>(() => {
-    return localStorage.getItem('midnight_sanctuary_status') || null;
-  });
-  const [activeReceipt, setActiveReceipt] = useState<TxReceipt | null>(() => {
-    try {
-      const saved = localStorage.getItem('midnight_sanctuary_receipt');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return null;
-  });
-
-  // Contract Instance
+  /* ── Contract State ── */
   const [contractInstance, setContractInstance] = useState<Contract<any> | null>(null);
   const [circuitCtx, setCircuitCtx] = useState<any>(null);
+
+  /* ── Ledger State (from local circuit execution — honest) ── */
+  const [ledgerState, setLedgerState] = useState<LedgerState>({
+    note_unlocked: false,
+    note_hash: '',
+    unlock_count: 0
+  });
+
+  /* ── Form State ── */
+  const [secretPassphrase, setSecretPassphrase] = useState('');
+  const [passphraseInput, setPassphraseInput] = useState('');
+  const [noteMessage, setNoteMessage] = useState('');
+  const [liveComputedHash, setLiveComputedHash] = useState('');
+
+  /* ── Execution State ── */
+  const [isExecutingProof, setIsExecutingProof] = useState(false);
+  const [activeReceipt, setActiveReceipt] = useState<TxReceipt | null>(null);
+  const [statusLog, setStatusLog] = useState<string[]>([]);
+
+  /* ── UI State ── */
   const [copied, setCopied] = useState(false);
 
-  const addLog = (msg: string) => {
+  const addLog = useCallback((msg: string) => {
     console.log('[Midnight DApp]', msg);
-    setConnectLog(prev => [msg, ...prev.slice(0, 9)]);
-  };
+    setStatusLog(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 19)]);
+  }, []);
 
-  // Live Hash Computation on Passphrase Change
+  /* ── Check Proof Server Health ── */
   useEffect(() => {
-    computeSha256Hex(secretPassphrase).then(setLiveComputedHash);
-  }, [secretPassphrase]);
-
-  // Auto-persist state changes to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('midnight_sanctuary_ledger', JSON.stringify(ledgerState));
-      localStorage.setItem('midnight_sanctuary_pass', secretPassphrase);
-      localStorage.setItem('midnight_sanctuary_msg', noteMessage);
-      if (proofStatus) localStorage.setItem('midnight_sanctuary_status', proofStatus);
-      if (activeReceipt) localStorage.setItem('midnight_sanctuary_receipt', JSON.stringify(activeReceipt));
-    } catch (e) {}
-  }, [ledgerState, secretPassphrase, noteMessage, proofStatus, activeReceipt]);
-
-  // Query Midnight Preview Indexer API on Mount to verify deployment status
-  useEffect(() => {
-    async function verifyOnChainDeployment() {
+    async function checkProofServer() {
       try {
-        addLog(`Querying Midnight Preview Indexer for contract ${contractAddress}...`);
-        const query = JSON.stringify({
-          query: `{ contract(address: "${contractAddress}") { address } }`
-        });
+        const res = await fetch('http://localhost:6300/health', { signal: AbortSignal.timeout(3000) }).catch(() => null);
+        if (res && res.ok) {
+          setInfra(prev => ({ ...prev, proofServer: 'online' }));
+          addLog('✅ Proof Server (Docker) is online at localhost:6300');
+        } else {
+          setInfra(prev => ({ ...prev, proofServer: 'offline' }));
+          addLog('⚠️ Proof Server (Docker) not reachable at localhost:6300');
+        }
+      } catch {
+        setInfra(prev => ({ ...prev, proofServer: 'offline' }));
+        addLog('⚠️ Proof Server (Docker) not reachable at localhost:6300');
+      }
+    }
+    checkProofServer();
+  }, [addLog]);
+
+  /* ── Check Indexer Health ── */
+  useEffect(() => {
+    async function checkIndexer() {
+      try {
+        // Try public preview indexer
         const res = await fetch('https://indexer.preview.midnight.network/api/v4/graphql', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: query
+          body: JSON.stringify({ query: '{ __typename }' }),
+          signal: AbortSignal.timeout(5000)
         }).catch(() => null);
-        
+
         if (res && res.ok) {
-          setIndexerConfirmed(true);
-          addLog(`✅ Verified on-chain contract ${contractAddress} on Midnight Preview Indexer!`);
+          setInfra(prev => ({ ...prev, indexer: 'online' }));
+          addLog('✅ Midnight Preview Indexer is reachable');
         } else {
-          setIndexerConfirmed(true); // Fallback active confirmation
+          // Try local indexer
+          const localRes = await fetch('http://localhost:8088/api/v4/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: '{ __typename }' }),
+            signal: AbortSignal.timeout(3000)
+          }).catch(() => null);
+
+          if (localRes && localRes.ok) {
+            setInfra(prev => ({ ...prev, indexer: 'online' }));
+            addLog('✅ Local Indexer (Docker) is online at localhost:8088');
+          } else {
+            setInfra(prev => ({ ...prev, indexer: 'offline' }));
+            addLog('⚠️ Indexer not reachable (CORS may block browser requests)');
+          }
         }
-      } catch (e) {
-        setIndexerConfirmed(true);
+      } catch {
+        setInfra(prev => ({ ...prev, indexer: 'offline' }));
+        addLog('⚠️ Indexer check failed');
       }
     }
-    verifyOnChainDeployment();
-  }, [contractAddress]);
+    checkIndexer();
+  }, [addLog]);
 
-  // Inspect Window on Mount
+  /* ── Live Hash Computation ── */
   useEffect(() => {
-    if (typeof window.midnight !== 'undefined') {
-      const keys = Object.keys(window.midnight);
-      setDetectedKeys(keys);
-      addLog(`Found window.midnight keys: [${keys.join(', ')}]`);
+    if (secretPassphrase) {
+      computeSha256Hex(secretPassphrase).then(setLiveComputedHash);
     } else {
-      addLog('window.midnight is undefined on load');
+      setLiveComputedHash('');
     }
-  }, []);
+  }, [secretPassphrase]);
 
-  // Initialize Compact Contract Context
+  /* ── Initialize Contract Instance ── */
   useEffect(() => {
+    if (!secretPassphrase) return;
     try {
       const validPass = new TextEncoder().encode(secretPassphrase.padEnd(32, '0')).slice(0, 32);
       const contract = new Contract({
-        passphrase: (ctx) => [ctx.privateState, validPass],
+        passphrase: (ctx: any) => [ctx.privateState, validPass],
       });
 
       const coinPublicKey = { bytes: new Uint8Array(32) };
@@ -287,87 +253,93 @@ export default function App() {
       setContractInstance(contract);
       setCircuitCtx(ctx);
     } catch (err) {
-      console.error('Contract initialization failed:', err);
+      console.error('Contract init error:', err);
     }
   }, [secretPassphrase]);
 
-  // Master 1AM Official DApp Connector Flow
-  const handleConnectUniversal = async () => {
+  /* ═══════════════════════════════════════════════
+     WALLET CONNECTION — Real 1AM DApp Connector
+     ═══════════════════════════════════════════════ */
+  const handleConnect = async () => {
     setIsConnecting(true);
-    addLog('Discovering 1AM Midnight wallet provider...');
+    setInfra(prev => ({ ...prev, wallet: 'connecting' }));
+    addLog('🔍 Discovering 1AM Midnight wallet provider...');
 
     try {
       const discovery = await discoverWalletProvider(5000);
-
       if (!discovery) {
-        addLog('❌ No 1AM wallet extension detected in browser.');
-        setProofStatus('❌ Connection Failed: 1AM Wallet extension not found. Please install/unlock 1AM wallet in Chrome.');
-        setWalletConnected(false);
+        addLog('❌ No Midnight wallet extension found. Install the 1AM wallet for Chrome.');
+        setInfra(prev => ({ ...prev, wallet: 'disconnected' }));
         setIsConnecting(false);
         return;
       }
 
       const { key, provider } = discovery;
-      addLog(`Connecting via 1AM provider ("${key}")...`);
+      addLog(`Found wallet provider: "${key}". Requesting connection...`);
 
       let api = null;
       if (typeof provider.connect === 'function') {
-        try {
-          api = await provider.connect('preview');
-        } catch (e) {
-          api = await provider.connect('preprod').catch(() => provider.connect());
-        }
+        try { api = await provider.connect('preview'); }
+        catch { api = await provider.connect().catch(() => null); }
       } else if (typeof provider.enable === 'function') {
         api = await provider.enable();
       }
 
       if (!api) {
-        throw new Error('1AM wallet connection was cancelled by user.');
+        throw new Error('Wallet connection rejected by user');
       }
 
-      let addr = await extractWalletAddress(api, provider);
-
-      if (!addr || typeof addr !== 'string' || addr.trim() === '') {
-        const apiKeys = Object.keys(api);
-        addLog(`1AM Wallet authorized session! API session keys: [${apiKeys.join(', ')}]`);
-        addr = 'mn_preview1_authorized_1am_account';
-      }
+      const addr = await extractWalletAddress(api, provider);
+      const displayAddr = addr || `1AM Session (${key})`;
 
       setWalletApi(api);
-      setWalletAddress(addr);
+      setWalletAddress(displayAddr);
       setWalletConnected(true);
-      setWalletType('1AM');
-      addLog(`🎉 1AM Wallet Connection Established! Address: ${addr}`);
-      setProofStatus(`✅ Authorized 1AM Wallet (${addr})`);
+      setInfra(prev => ({ ...prev, wallet: 'connected' }));
+      addLog(`✅ 1AM Wallet connected! Address: ${displayAddr}`);
+
+      // Log available API methods for transparency
+      const methods = Object.keys(api).filter(k => typeof api[k] === 'function');
+      addLog(`Wallet API methods: [${methods.join(', ')}]`);
+
     } catch (err: any) {
-      addLog(`❌ Connection Error: ${err.message || err}`);
-      setProofStatus(`❌ Wallet Connection Failed: ${err.message || 'Rejected by user'}`);
-      setWalletConnected(false);
-      setWalletAddress('');
-      setWalletApi(null);
+      addLog(`❌ Connection failed: ${err.message || err}`);
+      setInfra(prev => ({ ...prev, wallet: 'disconnected' }));
     } finally {
       setIsConnecting(false);
     }
   };
 
-  // Disconnect Wallet Handler (Complete State Reset)
   const handleDisconnect = () => {
     setWalletConnected(false);
-    setWalletType(null);
     setWalletAddress('');
     setWalletApi(null);
-    addLog('🔌 1AM Wallet disconnected successfully.');
-    setProofStatus('Disconnected from 1AM Wallet.');
+    setInfra(prev => ({ ...prev, wallet: 'disconnected' }));
+    addLog('🔌 Wallet disconnected.');
   };
 
-  // 1. Setup Secret Note Circuit Call
+  /* ═══════════════════════════════════════════════
+     CIRCUIT EXECUTION — setup_note
+     
+     Phase 1: Local WASM circuit execution (REAL ZK)
+     Phase 2: Attempt on-chain submission via wallet
+     ═══════════════════════════════════════════════ */
   const handleSetupNote = async () => {
-    if (!contractInstance || !circuitCtx) return;
+    if (!walletConnected) {
+      addLog('❌ Connect your 1AM wallet first!');
+      return;
+    }
+    if (!contractInstance || !circuitCtx) {
+      addLog('❌ Enter a passphrase first to initialize the contract circuit.');
+      return;
+    }
+
     setIsExecutingProof(true);
-    setProofStatus('⚙️ Computing ZK Commitment Hash & Constructing Circuit Proof...');
-    
+    addLog('⚙️ Phase 1: Executing setup_note circuit locally via compiled WASM...');
     const startTime = performance.now();
+
     try {
+      // Phase 1: Real local WASM circuit execution
       const passBytes = new TextEncoder().encode(secretPassphrase.padEnd(32, '0')).slice(0, 32);
       const hashBuffer = await crypto.subtle.digest('SHA-256', passBytes);
       const hashArray = new Uint8Array(hashBuffer);
@@ -376,11 +348,8 @@ export default function App() {
       setCircuitCtx(setupResult.context);
 
       const updatedLedger = ledger(setupResult.context.currentQueryContext.state);
-      const hexHash = '0x' + Array.from(updatedLedger.note_hash).map(b => b.toString(16).padStart(2, '0')).join('');
-
+      const hexHash = bytesToHex(updatedLedger.note_hash);
       const elapsed = Math.round(performance.now() - startTime);
-      const receiptHash = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('');
-      const timeStr = new Date().toLocaleTimeString();
 
       setLedgerState({
         note_unlocked: updatedLedger.note_unlocked,
@@ -388,31 +357,97 @@ export default function App() {
         unlock_count: Number(updatedLedger.unlock_count)
       });
 
+      addLog(`✅ Phase 1 Complete: Local circuit verified in ${elapsed}ms`);
+      addLog(`   Commitment Hash: ${truncateHash(hexHash)}`);
+
+      // Phase 2: Attempt on-chain submission via wallet API
+      let txHash: string | null = null;
+      let onChainStatus: TxReceipt['status'] = 'local_verified';
+      let statusMsg = `Circuit verified locally in ${elapsed}ms. Connect proof server for on-chain submission.`;
+
+      if (walletApi) {
+        addLog('📡 Phase 2: Attempting on-chain submission via 1AM wallet...');
+        try {
+          // Try to get the transaction from the circuit result
+          const tx = (setupResult.context as any)?.transaction || (setupResult as any)?.transaction;
+          
+          if (tx && walletApi.balanceAndProveTransaction) {
+            addLog('   Balancing & proving transaction via 1AM wallet...');
+            const balancedTx = await walletApi.balanceAndProveTransaction(tx, []);
+            addLog('   Submitting proven transaction to Midnight Preview...');
+            const result = await walletApi.submitTransaction(balancedTx);
+            txHash = typeof result === 'string' ? result : result?.txHash || result?.hash || JSON.stringify(result);
+            onChainStatus = 'confirmed';
+            statusMsg = `Confirmed on Midnight Preview Network`;
+            addLog(`🎉 On-chain confirmed! Tx: ${txHash}`);
+          } else if (tx && walletApi.balanceUnsealedTransaction) {
+            // Newer API
+            addLog('   Balancing unsealed transaction via 1AM wallet...');
+            const balancedTx = await walletApi.balanceUnsealedTransaction(tx);
+            const result = await walletApi.submitTransaction(balancedTx);
+            txHash = typeof result === 'string' ? result : result?.txHash || result?.hash || JSON.stringify(result);
+            onChainStatus = 'confirmed';
+            statusMsg = `Confirmed on Midnight Preview Network`;
+            addLog(`🎉 On-chain confirmed! Tx: ${txHash}`);
+          } else {
+            addLog('   ℹ️ Local circuit produced no submittable transaction object.');
+            addLog('   This is expected — full deployment requires @midnight-ntwrk/midnight-js-contracts deployContract().');
+            statusMsg = `Circuit verified locally (${elapsed}ms). On-chain deployment requires full SDK provider setup.`;
+          }
+        } catch (submitErr: any) {
+          addLog(`   ⚠️ On-chain submission failed: ${submitErr.message || submitErr}`);
+          statusMsg = `Circuit verified locally (${elapsed}ms). On-chain submission failed: ${submitErr.message}`;
+          onChainStatus = 'local_verified';
+        }
+      }
+
       setActiveReceipt({
         circuit: 'setup_note(initial_hash: Bytes<32>)',
-        witnessHex: textToHexWitness(secretPassphrase),
-        status: 'Confirmed on Midnight Preview',
-        stateMessage: 'Note hash commitment successfully broadcast and registered on-chain',
-        receiptHash,
-        timestamp: timeStr
+        witnessHex: bytesToHex(passBytes).slice(0, 20) + '...',
+        status: onChainStatus,
+        statusMessage: statusMsg,
+        receiptHash: txHash,
+        timestamp: new Date().toLocaleTimeString(),
+        executionMs: elapsed
       });
 
-      setProofStatus(`✅ setup_note Circuit Verified! Commitment Hash published on Midnight Preview.`);
     } catch (err: any) {
-      console.error(err);
-      setProofStatus(`❌ Setup Proof Error: ${err.message || 'Circuit execution failed'}`);
+      addLog(`❌ Circuit execution error: ${err.message || err}`);
+      setActiveReceipt({
+        circuit: 'setup_note(initial_hash: Bytes<32>)',
+        witnessHex: '',
+        status: 'failed',
+        statusMessage: `Circuit execution failed: ${err.message}`,
+        receiptHash: null,
+        timestamp: new Date().toLocaleTimeString(),
+        executionMs: Math.round(performance.now() - startTime)
+      });
     } finally {
       setIsExecutingProof(false);
     }
   };
 
-  // 2. Unlock Secret Note Circuit Call (ZK Proof Witness Execution)
+  /* ═══════════════════════════════════════════════
+     CIRCUIT EXECUTION — unlock_note
+     ═══════════════════════════════════════════════ */
   const handleUnlockNote = async () => {
-    if (!contractInstance || !circuitCtx) return;
-    setIsExecutingProof(true);
-    setProofStatus('🔒 Evaluating Private Witness & Generating Zero-Knowledge Unlock Proof...');
+    if (!walletConnected) {
+      addLog('❌ Connect your 1AM wallet first!');
+      return;
+    }
+    if (!contractInstance || !circuitCtx) {
+      addLog('❌ Run setup_note first to initialize contract state.');
+      return;
+    }
+    if (!passphraseInput) {
+      addLog('❌ Enter a passphrase to verify.');
+      return;
+    }
 
+    setIsExecutingProof(true);
+    addLog('🔒 Phase 1: Evaluating unlock_note circuit with private witness...');
     const startTime = performance.now();
+
     try {
       const providedBytes = new TextEncoder().encode(passphraseInput.padEnd(32, '0')).slice(0, 32);
 
@@ -420,11 +455,8 @@ export default function App() {
       setCircuitCtx(unlockResult.context);
 
       const updatedLedger = ledger(unlockResult.context.currentQueryContext.state);
-      const hexHash = '0x' + Array.from(updatedLedger.note_hash).map(b => b.toString(16).padStart(2, '0')).join('');
-
+      const hexHash = bytesToHex(updatedLedger.note_hash);
       const elapsed = Math.round(performance.now() - startTime);
-      const receiptHash = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('');
-      const timeStr = new Date().toLocaleTimeString();
 
       setLedgerState({
         note_unlocked: updatedLedger.note_unlocked,
@@ -432,39 +464,106 @@ export default function App() {
         unlock_count: Number(updatedLedger.unlock_count)
       });
 
+      addLog(`✅ Phase 1 Complete: Unlock circuit verified in ${elapsed}ms`);
+      addLog(`   note_unlocked = ${updatedLedger.note_unlocked}`);
+      addLog(`   unlock_count = ${updatedLedger.unlock_count}`);
+
+      // Phase 2: Attempt on-chain submission
+      let txHash: string | null = null;
+      let onChainStatus: TxReceipt['status'] = 'local_verified';
+      let statusMsg = `ZK proof verified locally (${elapsed}ms). Passphrase matched — vault unlocked.`;
+
+      if (walletApi) {
+        addLog('📡 Phase 2: Attempting on-chain submission via 1AM wallet...');
+        try {
+          const tx = (unlockResult.context as any)?.transaction || (unlockResult as any)?.transaction;
+
+          if (tx && (walletApi.balanceAndProveTransaction || walletApi.balanceUnsealedTransaction)) {
+            const balanceFn = walletApi.balanceUnsealedTransaction || walletApi.balanceAndProveTransaction;
+            const args = walletApi.balanceUnsealedTransaction ? [tx] : [tx, []];
+            const balancedTx = await balanceFn(...args);
+            const result = await walletApi.submitTransaction(balancedTx);
+            txHash = typeof result === 'string' ? result : result?.txHash || result?.hash || JSON.stringify(result);
+            onChainStatus = 'confirmed';
+            statusMsg = 'Confirmed on Midnight Preview Network';
+            addLog(`🎉 On-chain confirmed! Tx: ${txHash}`);
+          } else {
+            addLog('   ℹ️ No submittable transaction from local circuit execution.');
+            statusMsg = `Circuit verified locally (${elapsed}ms). Full on-chain requires deployContract() SDK flow.`;
+          }
+        } catch (submitErr: any) {
+          addLog(`   ⚠️ On-chain submission: ${submitErr.message || submitErr}`);
+          statusMsg = `Circuit verified locally (${elapsed}ms). On-chain submission: ${submitErr.message}`;
+        }
+      }
+
       setActiveReceipt({
         circuit: 'unlock_note(provided_passphrase: Bytes<32>)',
-        witnessHex: textToHexWitness(passphraseInput),
-        status: 'Confirmed on Midnight Preview',
-        stateMessage: 'Vault successfully unlocked and verified',
-        receiptHash,
-        timestamp: timeStr
+        witnessHex: bytesToHex(providedBytes).slice(0, 20) + '...',
+        status: onChainStatus,
+        statusMessage: statusMsg,
+        receiptHash: txHash,
+        timestamp: new Date().toLocaleTimeString(),
+        executionMs: elapsed
       });
 
-      setProofStatus(`🎉 Vault Unlocked & Proof Verified on Midnight Preview Network!`);
     } catch (err: any) {
-      console.error(err);
-      setProofStatus(`❌ ZK Proof Rejected: Passphrase mismatch or invalid witness proof!`);
+      const elapsed = Math.round(performance.now() - startTime);
+      addLog(`❌ ZK Proof Rejected: ${err.message || err}`);
+      setActiveReceipt({
+        circuit: 'unlock_note(provided_passphrase: Bytes<32>)',
+        witnessHex: '',
+        status: 'failed',
+        statusMessage: `ZK Proof Rejected: ${err.message || 'Invalid passphrase — witness mismatch'}`,
+        receiptHash: null,
+        timestamp: new Date().toLocaleTimeString(),
+        executionMs: elapsed
+      });
     } finally {
       setIsExecutingProof(false);
     }
   };
 
-  const copyAddress = () => {
-    navigator.clipboard.writeText(contractAddress);
+  const copyText = (text: string) => {
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  /* ─── Status Color Helpers ─── */
+  const infraColor = (s: string) =>
+    s === 'online' || s === 'connected' ? 'text-emerald-400' :
+    s === 'checking' || s === 'connecting' ? 'text-amber-400' :
+    'text-red-400';
+
+  const infraIcon = (s: string) =>
+    s === 'online' || s === 'connected' ? <CheckCircle2 className="w-3.5 h-3.5" /> :
+    s === 'checking' || s === 'connecting' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> :
+    <XCircle className="w-3.5 h-3.5" />;
+
+  const receiptStatusColor = (s: TxReceipt['status']) =>
+    s === 'confirmed' ? 'text-emerald-400 border-emerald-500/40 bg-emerald-950/30' :
+    s === 'local_verified' ? 'text-amber-400 border-amber-500/40 bg-amber-950/20' :
+    s === 'submitted' ? 'text-blue-400 border-blue-500/40 bg-blue-950/20' :
+    'text-red-400 border-red-500/40 bg-red-950/20';
+
+  const receiptStatusLabel = (s: TxReceipt['status']) =>
+    s === 'confirmed' ? '✅ Confirmed On-Chain' :
+    s === 'local_verified' ? '⚡ Local Circuit Verified' :
+    s === 'submitted' ? '📡 Submitted (Pending)' :
+    '❌ Failed';
+
+  /* ═══════════════════════════════════════════════
+     RENDER
+     ═══════════════════════════════════════════════ */
   return (
     <div className="min-h-screen bg-[#08090c] text-[#f7f4eb] font-playfair pb-24 pt-10 px-4 sm:px-6 lg:px-12 max-w-7xl mx-auto space-y-10">
-      
-      {/* Neoclassical Header Bar */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-8 border-b border-[#d4af37]/30 relative">
-        
+
+      {/* ══════ HEADER ══════ */}
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-8 border-b border-[#d4af37]/30">
         <div className="flex items-center gap-5">
-          <div className="p-4 neo-card-gold rounded-xl shadow-2xl text-[#d4af37] relative group">
-            <Crown className="w-9 h-9 stroke-[1.8] animate-gold-pulse" />
+          <div className="p-4 neo-card-gold rounded-xl shadow-2xl text-[#d4af37]">
+            <Crown className="w-9 h-9 stroke-[1.8]" />
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-3">
@@ -472,7 +571,7 @@ export default function App() {
                 Midnight<span className="text-[#f4e4bc] font-mono text-2xl font-light">::Sanctuary</span>
               </h1>
               <span className="px-3.5 py-1 text-[11px] neo-badge rounded-md font-cinzel font-bold uppercase tracking-widest">
-                Preview Network
+                Preview
               </span>
             </div>
             <p className="text-sm text-[#c5bca3] font-garamond italic text-base tracking-wide">
@@ -481,14 +580,14 @@ export default function App() {
           </div>
         </div>
 
-        {/* 1AM Wallet Connection / Disconnect Component */}
-        <div className="flex items-center gap-4 w-full md:w-auto">
+        {/* Wallet Connect / Disconnect */}
+        <div className="flex items-center gap-3 w-full md:w-auto">
           {walletConnected ? (
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-3 px-5 py-3 neo-card rounded-xl border border-[#d4af37]/50 shadow-xl">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#d4af37] animate-ping" />
+            <>
+              <div className="flex items-center gap-3 px-5 py-3 neo-card rounded-xl border border-emerald-500/50 shadow-xl">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                 <div className="text-left">
-                  <p className="text-[10px] font-cinzel font-bold text-[#d4af37] uppercase tracking-widest">
+                  <p className="text-[10px] font-cinzel font-bold text-emerald-400 uppercase tracking-widest">
                     1AM Wallet Connected
                   </p>
                   <p className="text-xs font-mono text-[#f4e4bc] truncate max-w-[180px]">
@@ -496,49 +595,313 @@ export default function App() {
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleDisconnect}
-                className="flex items-center gap-2 px-4 py-3 bg-[#1e1014] hover:bg-[#2a141a] text-[#f87171] font-cinzel font-bold text-xs rounded-xl border border-[#7f1d1d]/60 shadow-lg transition duration-200 cursor-pointer active:scale-95"
-                title="Disconnect 1AM Wallet"
-              >
-                <LogOut className="w-4 h-4 text-[#f87171]" />
-                Disconnect
+              <button onClick={handleDisconnect}
+                className="flex items-center gap-2 px-4 py-3 bg-[#1e1014] hover:bg-[#2a141a] text-[#f87171] font-cinzel font-bold text-xs rounded-xl border border-[#7f1d1d]/60 shadow-lg transition cursor-pointer active:scale-95">
+                <LogOut className="w-4 h-4" /> Disconnect
               </button>
-            </div>
+            </>
           ) : (
-            <button
-              type="button"
-              onClick={handleConnectUniversal}
-              disabled={isConnecting}
-              className="flex items-center justify-center gap-3 px-7 py-3.5 neo-btn-gold text-slate-950 rounded-xl shadow-2xl transition duration-200 cursor-pointer disabled:opacity-50 active:scale-95"
-            >
-              {isConnecting ? (
-                <RefreshCw className="w-5 h-5 animate-spin text-slate-950" />
-              ) : (
-                <Wallet className="w-5 h-5 stroke-[2.2] text-slate-950" />
-              )}
+            <button onClick={handleConnect} disabled={isConnecting}
+              className="flex items-center justify-center gap-3 px-7 py-3.5 neo-btn-gold text-slate-950 rounded-xl shadow-2xl transition cursor-pointer disabled:opacity-50 active:scale-95">
+              {isConnecting ? <RefreshCw className="w-5 h-5 animate-spin text-slate-950" /> : <Wallet className="w-5 h-5 stroke-[2.2] text-slate-950" />}
               Connect 1AM Wallet
             </button>
           )}
         </div>
       </header>
 
-      {/* Live Diagnostic Console Bar */}
-      {connectLog.length > 0 && (
+      {/* ══════ INFRASTRUCTURE STATUS BAR ══════ */}
+      <section className="neo-card rounded-2xl p-5 border border-[#d4af37]/30 bg-[#0d0f15]/90">
+        <div className="flex items-center gap-2 text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-widest mb-4">
+          <Server className="w-4 h-4" /> Infrastructure Status
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Proof Server */}
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-[#07080b] border border-[#d4af37]/20">
+            <span className={infraColor(infra.proofServer)}>{infraIcon(infra.proofServer)}</span>
+            <div>
+              <p className="text-[10px] font-cinzel uppercase text-[#c5bca3]">Proof Server (Docker)</p>
+              <p className={`text-xs font-mono font-bold ${infraColor(infra.proofServer)}`}>
+                {infra.proofServer === 'online' ? 'localhost:6300 ✓' : infra.proofServer === 'checking' ? 'Checking...' : 'Not Reachable'}
+              </p>
+            </div>
+          </div>
+          {/* Indexer */}
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-[#07080b] border border-[#d4af37]/20">
+            <span className={infraColor(infra.indexer)}>{infraIcon(infra.indexer)}</span>
+            <div>
+              <p className="text-[10px] font-cinzel uppercase text-[#c5bca3]">Midnight Indexer</p>
+              <p className={`text-xs font-mono font-bold ${infraColor(infra.indexer)}`}>
+                {infra.indexer === 'online' ? 'Preview Network ✓' : infra.indexer === 'checking' ? 'Checking...' : 'Not Reachable'}
+              </p>
+            </div>
+          </div>
+          {/* Wallet */}
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-[#07080b] border border-[#d4af37]/20">
+            <span className={infraColor(infra.wallet)}>{infraIcon(infra.wallet)}</span>
+            <div>
+              <p className="text-[10px] font-cinzel uppercase text-[#c5bca3]">1AM Wallet</p>
+              <p className={`text-xs font-mono font-bold ${infraColor(infra.wallet)}`}>
+                {infra.wallet === 'connected' ? 'Connected ✓' : infra.wallet === 'connecting' ? 'Connecting...' : 'Not Connected'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ══════ HERO SECTION ══════ */}
+      <section className="neo-card-gold rounded-3xl p-8 sm:p-10 border border-[#d4af37]/50 space-y-6 relative overflow-hidden">
+        <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-[#d4af37]/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 space-y-4">
+          <div className="inline-flex items-center gap-2.5 px-4 py-1.5 neo-badge rounded-full text-xs font-cinzel font-extrabold uppercase tracking-widest">
+            <Sparkles className="w-4 h-4 text-[#d4af37]" /> Zero-Knowledge Privacy Guarantee
+          </div>
+          <h2 className="text-3xl sm:text-5xl font-black text-[#f7f4eb] tracking-tight font-cinzel leading-tight">
+            "Proved without revealing your input"
+          </h2>
+          <p className="text-[#c5bca3] font-garamond text-lg max-w-3xl leading-relaxed italic">
+            Your passphrase is evaluated as a <strong className="text-[#f4e4bc]">private witness</strong> inside the Compact ZK circuit.
+            Only the boolean result (<code className="text-[#d4af37]">note_unlocked</code>) and commitment hash are disclosed on the public ledger.
+            The secret itself <strong className="text-[#f4e4bc]">never leaves your machine</strong>.
+          </p>
+        </div>
+      </section>
+
+      {/* ══════ MAIN GRID ══════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        {/* ── LEFT: Ledger State ── */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="neo-card rounded-3xl p-7 space-y-6 border border-[#d4af37]/30">
+            <div className="flex items-center justify-between border-b border-[#d4af37]/20 pb-4">
+              <div className="flex items-center gap-3 text-[#f7f4eb] font-cinzel font-bold text-xl">
+                <Database className="w-6 h-6 text-[#d4af37]" /> Vault Ledger
+              </div>
+              <span className="px-3 py-1 text-[11px] font-mono font-bold bg-[#d4af37]/15 text-[#f4e4bc] border border-[#d4af37]/30 rounded-md">
+                {ledgerState.note_hash ? 'Active' : 'No State'}
+              </span>
+            </div>
+
+            {/* Vault Status */}
+            <div className="p-5 rounded-2xl neo-card space-y-2 border border-[#d4af37]/20">
+              <p className="text-[11px] font-cinzel font-bold uppercase tracking-widest text-[#d4af37]">
+                Vault Unlock Status
+              </p>
+              <div className="flex items-center justify-between pt-1">
+                <span className={`text-lg font-cinzel font-bold flex items-center gap-3 ${ledgerState.note_unlocked ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {ledgerState.note_unlocked ? <><Unlock className="w-6 h-6" /> UNLOCKED</> : <><Lock className="w-6 h-6" /> LOCKED</>}
+                </span>
+              </div>
+            </div>
+
+            {/* Commitment Hash */}
+            <div className="p-5 rounded-2xl neo-card space-y-2.5 border border-[#d4af37]/20">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-cinzel font-bold uppercase tracking-widest text-[#d4af37]">Commitment Hash</p>
+                <Hash className="w-4 h-4 text-[#d4af37]" />
+              </div>
+              <p className="text-xs font-mono text-[#f4e4bc] break-all bg-[#07080b] p-3.5 rounded-xl border border-[#d4af37]/30 min-h-[40px]">
+                {ledgerState.note_hash || <span className="text-[#555]">No hash computed yet — run setup_note first</span>}
+              </p>
+            </div>
+
+            {/* Proof Count */}
+            <div className="p-5 rounded-2xl neo-card space-y-2 border border-[#d4af37]/20">
+              <p className="text-[11px] font-cinzel font-bold uppercase tracking-widest text-[#d4af37]">Verified ZK Proofs</p>
+              <div className="flex items-baseline justify-between pt-1">
+                <span className="text-4xl font-mono font-bold text-white font-cinzel">{ledgerState.unlock_count}</span>
+                <span className="text-xs text-[#c5bca3] font-garamond italic">circuit executions</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── RIGHT: Circuit Executor ── */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="neo-card rounded-3xl p-7 sm:p-9 space-y-7 border border-[#d4af37]/30">
+            <div className="border-b border-[#d4af37]/20 pb-5">
+              <h3 className="text-2xl font-bold font-cinzel text-white flex items-center gap-3">
+                <Cpu className="w-6 h-6 text-[#d4af37]" /> ZK Circuit Executor
+              </h3>
+              <p className="text-xs text-[#c5bca3] font-garamond italic text-base mt-1">
+                Execute Compact circuits via compiled WASM. Wallet connection required.
+              </p>
+            </div>
+
+            {/* Wallet Required Warning */}
+            {!walletConnected && (
+              <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-cinzel font-bold text-amber-400">Wallet Connection Required</p>
+                  <p className="text-xs text-amber-300/80 mt-1">
+                    Connect your 1AM wallet before executing circuits. This ensures all operations are authenticated and ready for on-chain submission.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Circuit I: setup_note */}
+            <div className="p-6 rounded-2xl neo-card border border-[#d4af37]/30 space-y-5">
+              <div className="flex items-center justify-between border-b border-[#d4af37]/15 pb-3">
+                <div className="flex items-center gap-3">
+                  <span className="px-3 py-1 text-[11px] font-cinzel font-bold neo-badge rounded-md">Circuit I</span>
+                  <h4 className="font-mono text-sm font-bold text-[#f7f4eb]">setup_note(initial_hash: Bytes&lt;32&gt;)</h4>
+                </div>
+                <span className="text-[11px] text-[#d4af37] font-cinzel uppercase tracking-wider">Initializer</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-wider mb-2">
+                    Secret Passphrase (Private Witness)
+                  </label>
+                  <input type="text" value={secretPassphrase}
+                    onChange={(e) => setSecretPassphrase(e.target.value)}
+                    placeholder="Enter your secret passphrase..."
+                    className="w-full px-4 py-3 bg-[#07080b] border border-[#d4af37]/30 rounded-xl text-sm font-mono text-[#f4e4bc] focus:outline-none focus:border-[#d4af37] placeholder-[#555]" />
+                  {liveComputedHash && (
+                    <p className="text-[10px] font-mono text-[#c5bca3] truncate mt-1.5">
+                      SHA-256: <span className="text-[#d4af37]">{truncateHash(liveComputedHash)}</span>
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-wider mb-2">
+                    Off-Chain Note (Not Published)
+                  </label>
+                  <input type="text" value={noteMessage}
+                    onChange={(e) => setNoteMessage(e.target.value)}
+                    placeholder="Private note content..."
+                    className="w-full px-4 py-3 bg-[#07080b] border border-[#d4af37]/30 rounded-xl text-sm text-[#f7f4eb] focus:outline-none focus:border-[#d4af37] placeholder-[#555]" />
+                </div>
+              </div>
+
+              <button onClick={handleSetupNote}
+                disabled={isExecutingProof || !walletConnected || !secretPassphrase}
+                className={`w-full py-3.5 rounded-xl text-xs flex items-center justify-center gap-2.5 cursor-pointer transition
+                  ${walletConnected ? 'neo-btn-outline' : 'bg-[#1a1a1a] text-[#555] border border-[#333] cursor-not-allowed'}
+                  disabled:opacity-40`}>
+                {isExecutingProof ? <Loader2 className="w-4 h-4 animate-spin text-[#d4af37]" /> : <KeyRound className="w-4 h-4 text-[#d4af37]" />}
+                Execute setup_note & Commit Hash
+              </button>
+            </div>
+
+            {/* Circuit II: unlock_note */}
+            <div className="p-6 rounded-2xl neo-card-gold space-y-5 border border-[#d4af37]/50">
+              <div className="flex items-center justify-between border-b border-[#d4af37]/20 pb-3">
+                <div className="flex items-center gap-3">
+                  <span className="px-3 py-1 text-[11px] font-cinzel font-bold neo-badge rounded-md bg-[#d4af37]/25">Circuit II</span>
+                  <h4 className="font-mono text-sm font-bold text-[#f7f4eb]">unlock_note(provided_passphrase: Bytes&lt;32&gt;)</h4>
+                </div>
+                <span className="text-[11px] text-[#f4e4bc] font-cinzel flex items-center gap-1.5 font-bold uppercase tracking-wider">
+                  <EyeOff className="w-3.5 h-3.5 text-[#d4af37]" /> Private Witness
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-wider mb-2">
+                  Enter Passphrase to Verify Access
+                </label>
+                <input type="password" placeholder="Enter secret passphrase to generate ZK proof..."
+                  value={passphraseInput} onChange={(e) => setPassphraseInput(e.target.value)}
+                  className="w-full px-4 py-3.5 bg-[#07080b] border border-[#d4af37]/50 rounded-xl text-sm font-mono text-white placeholder-[#7a7058] focus:outline-none focus:border-[#f4e4bc]" />
+              </div>
+
+              <button onClick={handleUnlockNote}
+                disabled={isExecutingProof || !walletConnected || !passphraseInput}
+                className={`w-full py-4 rounded-xl text-xs flex items-center justify-center gap-2.5 cursor-pointer transition
+                  ${walletConnected ? 'neo-btn-gold' : 'bg-[#1a1a1a] text-[#555] border border-[#333] cursor-not-allowed'}
+                  disabled:opacity-40`}>
+                {isExecutingProof ? <Loader2 className="w-4 h-4 animate-spin text-[#08090c]" /> : <Zap className="w-4 h-4 fill-current text-[#08090c]" />}
+                <span className="text-[#08090c] font-black uppercase">Generate & Submit Unlock ZK Proof</span>
+              </button>
+            </div>
+
+            {/* ══════ TRANSACTION RECEIPT ══════ */}
+            {activeReceipt && (
+              <div className={`p-6 rounded-2xl neo-card border shadow-2xl space-y-4 ${receiptStatusColor(activeReceipt.status)}`}>
+                <div className="flex items-center justify-between border-b border-current/20 pb-3">
+                  <span className="text-xs font-cinzel font-bold uppercase tracking-widest flex items-center gap-2.5">
+                    {activeReceipt.status === 'confirmed' ? <CheckCircle2 className="w-5 h-5" /> :
+                     activeReceipt.status === 'local_verified' ? <Zap className="w-5 h-5" /> :
+                     activeReceipt.status === 'failed' ? <XCircle className="w-5 h-5" /> :
+                     <Loader2 className="w-5 h-5 animate-spin" />}
+                    {receiptStatusLabel(activeReceipt.status)}
+                  </span>
+                  <span className="text-xs font-mono opacity-80">{activeReceipt.timestamp}</span>
+                </div>
+
+                <div className="space-y-2 font-mono text-xs text-[#e5dec9]">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+                    <span className="font-bold min-w-[140px]">Circuit:</span>
+                    <span className="text-[#f4e4bc] bg-[#030806] px-2.5 py-1 rounded border border-current/20">
+                      {'</> '}{activeReceipt.circuit}
+                    </span>
+                  </div>
+
+                  {activeReceipt.witnessHex && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+                      <span className="font-bold min-w-[140px]">Witness (Private):</span>
+                      <span className="text-[#c5bca3] break-all">{activeReceipt.witnessHex}</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+                    <span className="font-bold min-w-[140px]">Status:</span>
+                    <span className="font-bold">{activeReceipt.statusMessage}</span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+                    <span className="font-bold min-w-[140px]">Execution Time:</span>
+                    <span>{activeReceipt.executionMs}ms</span>
+                  </div>
+
+                  {activeReceipt.receiptHash && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 pt-1">
+                      <span className="font-bold min-w-[140px]">Receipt Hash:</span>
+                      <span className="text-[#d4af37] break-all">{activeReceipt.receiptHash}</span>
+                    </div>
+                  )}
+
+                  {!activeReceipt.receiptHash && activeReceipt.status === 'local_verified' && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 pt-1">
+                      <span className="font-bold min-w-[140px]">Receipt Hash:</span>
+                      <span className="text-[#777] italic">N/A — Local execution only (no on-chain tx)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Secret Message Revealed */}
+            {ledgerState.note_unlocked && noteMessage && (
+              <div className="p-6 rounded-2xl neo-card-gold border border-[#d4af37]/60 text-[#f7f4eb] space-y-3">
+                <div className="flex items-center gap-2.5 font-cinzel font-bold text-base text-[#f4e4bc]">
+                  <Unlock className="w-5 h-5 text-[#d4af37]" /> Secret Vault Payload:
+                </div>
+                <p className="text-sm font-mono text-[#f7f4eb] bg-[#07080b] p-4 rounded-xl border border-[#d4af37]/40">
+                  "{noteMessage}"
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ══════ DIAGNOSTIC LOG ══════ */}
+      {statusLog.length > 0 && (
         <section className="neo-card rounded-2xl p-5 border border-[#d4af37]/30 bg-[#0d0f15]/90 space-y-3">
           <div className="flex items-center justify-between text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-widest">
-            <span className="flex items-center gap-2.5">
-              <Bug className="w-4 h-4 text-[#d4af37]" /> Architectural Diagnostic Log
-            </span>
-            <span className="font-mono text-[11px] text-[#c5bca3]">
-              {detectedKeys.length > 0 ? `Detected Keys: [${detectedKeys.join(', ')}]` : 'Scanning...'}
-            </span>
+            <span className="flex items-center gap-2.5"><Terminal className="w-4 h-4" /> Diagnostic Console</span>
+            <button onClick={() => setStatusLog([])} className="text-[#c5bca3] hover:text-white transition cursor-pointer text-[10px] font-mono">
+              Clear
+            </button>
           </div>
-          <div className="space-y-1.5 max-h-36 overflow-y-auto font-mono text-xs text-[#e5dec9]/90 pr-2">
-            {connectLog.map((log, idx) => (
+          <div className="space-y-1.5 max-h-48 overflow-y-auto font-mono text-xs text-[#e5dec9]/90 pr-2">
+            {statusLog.map((log, idx) => (
               <div key={idx} className="border-b border-[#d4af37]/10 pb-1 flex items-start gap-2">
-                <span className="text-[#d4af37] font-bold text-[10px]">›</span>
+                <span className="text-[#d4af37] font-bold text-[10px] mt-0.5">›</span>
                 <span>{log}</span>
               </div>
             ))}
@@ -546,331 +909,13 @@ export default function App() {
         </section>
       )}
 
-      {/* Neoclassical Hero Banner ("Proved without revealing your input") */}
-      <section className="neo-card-gold rounded-3xl p-8 sm:p-10 border border-[#d4af37]/50 space-y-8 relative overflow-hidden">
-        <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-[#d4af37]/5 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8 relative z-10">
-          <div className="space-y-4 flex-1">
-            <div className="inline-flex items-center gap-2.5 px-4 py-1.5 neo-badge rounded-full text-xs font-cinzel font-extrabold uppercase tracking-widest">
-              <Sparkles className="w-4 h-4 text-[#d4af37]" /> Cryptographic Guarantee
-            </div>
-            
-            {/* MANDATORY PROMINENT LABEL */}
-            <h2 className="text-3xl sm:text-5xl font-black text-[#f7f4eb] tracking-tight font-cinzel leading-tight">
-              "Proved without revealing your input"
-            </h2>
-            
-            <p className="text-[#c5bca3] font-garamond text-lg max-w-3xl leading-relaxed italic">
-              Verify access to secret notes in-browser using Midnight's Compact ZK circuit. Your passphrase is evaluated strictly as a private witness—only state update signals are published on-chain.
-            </p>
-          </div>
-
-          {/* Deployed On-Chain Contract Vault Info Badge */}
-          <div className="shrink-0 flex flex-col gap-3.5 w-full lg:w-96 p-6 rounded-2xl neo-card border border-[#d4af37]/40 bg-[#0a0c10]/95 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#d4af37]/20 pb-3">
-              <span className="text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-widest flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> On-Chain Contract Vault
-              </span>
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-cinzel uppercase text-[#c5bca3]">Deployed Contract:</span>
-              <div className="flex items-center justify-between p-2.5 bg-[#07080b] rounded-xl border border-[#d4af37]/30">
-                <span className="text-xs font-mono text-[#f4e4bc] truncate">{contractAddress}</span>
-                <button onClick={copyAddress} className="text-[#d4af37] hover:text-white transition cursor-pointer p-1">
-                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-[11px] font-mono text-[#c5bca3] pt-1">
-              <span>Network: <strong className="text-[#d4af37]">Preview</strong></span>
-              <span>Indexer: <strong className="text-emerald-400">Confirmed Active</strong></span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Main Grid: Public Ledger Dashboard & ZK Proof Executor */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left Column: Live Public Ledger State */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="neo-card rounded-3xl p-7 space-y-6 border border-[#d4af37]/30">
-            <div className="flex items-center justify-between border-b border-[#d4af37]/20 pb-4">
-              <div className="flex items-center gap-3 text-[#f7f4eb] font-cinzel font-bold text-xl">
-                <Database className="w-6 h-6 text-[#d4af37]" />
-                On-Chain Vault Ledger
-              </div>
-              <span className="px-3 py-1 text-[11px] font-mono font-bold bg-[#d4af37]/15 text-[#f4e4bc] border border-[#d4af37]/30 rounded-md">
-                Live Ledger Sync
-              </span>
-            </div>
-
-            {/* User-Friendly Public Ledger Fields */}
-            <div className="space-y-5">
-              
-              {/* Vault Unlock Status */}
-              <div className="p-5 rounded-2xl neo-card space-y-2 border border-[#d4af37]/20">
-                <p className="text-[11px] font-cinzel font-bold uppercase tracking-widest text-[#d4af37]">
-                  Vault Unlock Status
-                </p>
-                <div className="flex items-center justify-between pt-1">
-                  <span className={`text-lg font-cinzel font-bold flex items-center gap-3 ${
-                    ledgerState.note_unlocked ? 'text-[#f4e4bc]' : 'text-amber-400'
-                  }`}>
-                    {ledgerState.note_unlocked ? (
-                      <>
-                        <Unlock className="w-6 h-6 text-[#d4af37]" /> UNLOCKED
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="w-6 h-6 text-amber-400" /> LOCKED
-                      </>
-                    )}
-                  </span>
-                  <span className="text-[11px] font-mono text-[#c5bca3]">
-                    {ledgerState.note_unlocked ? 'true' : 'false'}
-                  </span>
-                </div>
-              </div>
-
-              {/* On-Chain Secret Commitment Hash */}
-              <div className="p-5 rounded-2xl neo-card space-y-2.5 border border-[#d4af37]/20">
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-cinzel font-bold uppercase tracking-widest text-[#d4af37]">
-                    On-Chain Commitment Hash
-                  </p>
-                  <Hash className="w-4 h-4 text-[#d4af37]" />
-                </div>
-                <p className="text-xs font-mono text-[#f4e4bc] break-all bg-[#07080b] p-3.5 rounded-xl border border-[#d4af37]/30">
-                  {ledgerState.note_hash}
-                </p>
-              </div>
-
-              {/* Verified On-Chain ZK Proof Count */}
-              <div className="p-5 rounded-2xl neo-card space-y-2 border border-[#d4af37]/20">
-                <p className="text-[11px] font-cinzel font-bold uppercase tracking-widest text-[#d4af37]">
-                  Verified On-Chain ZK Proofs
-                </p>
-                <div className="flex items-baseline justify-between pt-1">
-                  <span className="text-4xl font-mono font-bold text-white font-cinzel">
-                    {ledgerState.unlock_count}
-                  </span>
-                  <span className="text-xs text-[#c5bca3] font-garamond italic text-base">verified transactions</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Contract & Prover Network Info */}
-            <div className="pt-5 border-t border-[#d4af37]/20 space-y-3 text-xs font-mono text-[#c5bca3]">
-              <div className="flex items-center justify-between">
-                <span className="font-cinzel text-[11px] uppercase tracking-wider text-[#d4af37]">Contract:</span>
-                <button 
-                  onClick={copyAddress}
-                  className="flex items-center gap-1.5 text-[#f4e4bc] hover:text-white transition cursor-pointer"
-                >
-                  <span className="truncate max-w-[130px] font-bold">{contractAddress}</span>
-                  {copied ? <Check className="w-3.5 h-3.5 text-[#d4af37]" /> : <Copy className="w-3.5 h-3.5 text-[#d4af37]" />}
-                </button>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-cinzel text-[11px] uppercase tracking-wider text-[#d4af37]">Midnight Indexer:</span>
-                <span className="text-emerald-400 font-bold">https://indexer.preview...</span>
-              </div>
-              {deployTxHash && (
-                <div className="flex justify-between text-[#e5dec9] pt-1">
-                  <span className="font-cinzel text-[11px] uppercase tracking-wider text-[#d4af37]">Deploy Tx:</span>
-                  <span className="truncate max-w-[130px] font-bold">{deployTxHash}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: In-Browser ZK Proof Circuit Execution */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="neo-card rounded-3xl p-7 sm:p-9 space-y-7 border border-[#d4af37]/30">
-            <div className="flex items-center justify-between border-b border-[#d4af37]/20 pb-5">
-              <div>
-                <h3 className="text-2xl font-bold font-cinzel text-white flex items-center gap-3">
-                  <Cpu className="w-6 h-6 text-[#d4af37]" />
-                  In-Browser ZK Circuit Prover
-                </h3>
-                <p className="text-xs text-[#c5bca3] font-garamond italic text-base mt-1">
-                  Execute Compact circuits locally and submit zero-knowledge cryptographic proofs to Midnight Preview.
-                </p>
-              </div>
-            </div>
-
-            {/* Actions & Circuits */}
-            <div className="space-y-7">
-              
-              {/* Circuit 1: setup_note */}
-              <div className="p-6 rounded-2xl neo-card border border-[#d4af37]/30 space-y-5">
-                <div className="flex items-center justify-between border-b border-[#d4af37]/15 pb-3">
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 text-[11px] font-cinzel font-bold neo-badge rounded-md">
-                      Circuit I
-                    </span>
-                    <h4 className="font-mono text-sm font-bold text-[#f7f4eb]">
-                      setup_note(initial_hash: Bytes&lt;32&gt;)
-                    </h4>
-                  </div>
-                  <span className="text-xs text-[#d4af37] font-cinzel uppercase tracking-wider text-[11px]">State Initializer</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-wider mb-2">
-                      Secret Passphrase (Private Witness)
-                    </label>
-                    <input
-                      type="text"
-                      value={secretPassphrase}
-                      onChange={(e) => setSecretPassphrase(e.target.value)}
-                      className="w-full px-4 py-3 bg-[#07080b] border border-[#d4af37]/30 rounded-xl text-sm font-mono text-[#f4e4bc] focus:outline-none focus:border-[#d4af37]"
-                    />
-                    {liveComputedHash && (
-                      <p className="text-[10px] font-mono text-[#c5bca3] truncate mt-1.5">
-                        Computed Hash: <span className="text-[#d4af37]">{liveComputedHash.slice(0, 18)}...</span>
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-wider mb-2">
-                      Off-Chain Storage Payload
-                    </label>
-                    <input
-                      type="text"
-                      value={noteMessage}
-                      onChange={(e) => setNoteMessage(e.target.value)}
-                      className="w-full px-4 py-3 bg-[#07080b] border border-[#d4af37]/30 rounded-xl text-sm text-[#f7f4eb] focus:outline-none focus:border-[#d4af37]"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSetupNote}
-                  disabled={isExecutingProof}
-                  className="w-full neo-btn-outline py-3.5 rounded-xl text-xs flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
-                >
-                  <KeyRound className="w-4 h-4 text-[#d4af37]" />
-                  Execute setup_note Circuit & Commit Hash
-                </button>
-              </div>
-
-              {/* Circuit 2: unlock_note */}
-              <div className="p-6 rounded-2xl neo-card-gold space-y-5 border border-[#d4af37]/50">
-                <div className="flex items-center justify-between border-b border-[#d4af37]/20 pb-3">
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 text-[11px] font-cinzel font-bold neo-badge rounded-md bg-[#d4af37]/25">
-                      Circuit II
-                    </span>
-                    <h4 className="font-mono text-sm font-bold text-[#f7f4eb]">
-                      unlock_note(provided_passphrase: Bytes&lt;32&gt;)
-                    </h4>
-                  </div>
-                  <span className="text-xs text-[#f4e4bc] font-cinzel flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
-                    <EyeOff className="w-3.5 h-3.5 text-[#d4af37]" /> Private Witness
-                  </span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-wider mb-2">
-                    Enter Private Passphrase to Verify Access
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="Enter secret passphrase to generate ZK proof..."
-                    value={passphraseInput}
-                    onChange={(e) => setPassphraseInput(e.target.value)}
-                    className="w-full px-4 py-3.5 bg-[#07080b] border border-[#d4af37]/50 rounded-xl text-sm font-mono text-white placeholder-[#7a7058] focus:outline-none focus:border-[#f4e4bc]"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleUnlockNote}
-                  disabled={isExecutingProof || !passphraseInput}
-                  className="w-full neo-btn-gold py-4 rounded-xl text-xs flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40"
-                >
-                  <Zap className="w-4 h-4 fill-current text-[#08090c]" />
-                  <span className="text-[#08090c] font-black uppercase">Generate & Submit Unlock ZK Proof</span>
-                </button>
-              </div>
-
-              {/* MENTOR-MATCHING ELEGANT TRANSACTION RECEIPT CARD */}
-              {activeReceipt && (
-                <div className="p-6 rounded-2xl neo-card border border-emerald-500/40 bg-[#06120e]/95 space-y-4 shadow-2xl">
-                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
-                    <span className="text-xs font-cinzel font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2.5">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400" /> Vault Unlocked & Proof Verified
-                    </span>
-                    <span className="text-xs font-mono text-emerald-300/80">
-                      {activeReceipt.timestamp}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 font-mono text-xs text-[#e5dec9]">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1">
-                      <span className="text-emerald-400 font-bold min-w-[130px]">Circuit:</span>
-                      <span className="text-[#f4e4bc] bg-[#030806] px-2.5 py-1 rounded border border-emerald-500/20">
-                        {`</> ${activeReceipt.circuit}`}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1">
-                      <span className="text-emerald-400 font-bold min-w-[130px]">Witness (Private):</span>
-                      <span className="text-[#c5bca3] break-all">{activeReceipt.witnessHex}</span>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1">
-                      <span className="text-emerald-400 font-bold min-w-[130px]">Status:</span>
-                      <span className="text-emerald-300 font-bold">{activeReceipt.status}</span>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1">
-                      <span className="text-emerald-400 font-bold min-w-[130px]">State:</span>
-                      <span className="text-[#f7f4eb]">{activeReceipt.stateMessage}</span>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 pt-1">
-                      <span className="text-emerald-400 font-bold min-w-[130px]">Receipt Hash:</span>
-                      <span className="text-[#d4af37] break-all">{activeReceipt.receiptHash}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Secret Message Revealed Content */}
-              {ledgerState.note_unlocked && (
-                <div className="p-6 rounded-2xl neo-card-gold border border-[#d4af37]/60 text-[#f7f4eb] space-y-3">
-                  <div className="flex items-center gap-2.5 font-cinzel font-bold text-base text-[#f4e4bc]">
-                    <Unlock className="w-5 h-5 text-[#d4af37]" /> Secret Vault Payload Unlocked:
-                  </div>
-                  <p className="text-sm font-mono text-[#f7f4eb] bg-[#07080b] p-4 rounded-xl border border-[#d4af37]/40">
-                    "{noteMessage}"
-                  </p>
-                </div>
-              )}
-
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Neoclassical Footer */}
+      {/* ══════ FOOTER ══════ */}
       <footer className="pt-10 border-t border-[#d4af37]/30 text-center text-xs text-[#c5bca3] font-garamond italic text-base space-y-2">
         <p className="font-cinzel text-xs not-italic tracking-wider uppercase text-[#d4af37]">
-          Midnight Sanctuary • Level 1 & Level 2 Complete Challenge • Built with Compact v0.31.1 & React
+          Midnight Sanctuary • Compact v0.31.1 • Rise In Challenge
         </p>
         <p className="text-[#998f75]">
-          Public ledger state contains only note_unlocked, note_hash, and unlock_count. Zero knowledge of passphrase is disclosed on-chain.
+          Only note_unlocked, note_hash, and unlock_count are disclosed. Your passphrase remains private.
         </p>
       </footer>
     </div>

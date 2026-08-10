@@ -135,20 +135,42 @@ export default function App() {
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployTxHash, setDeployTxHash] = useState<string | null>('0xa4c4bc9a240cc8dee668e22c34e6dfbb0510b12846ea569ce09aca8615c05183');
 
-  // Public Ledger State
-  const [ledgerState, setLedgerState] = useState<LedgerState>({
-    note_unlocked: false,
-    note_hash: '0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069',
-    unlock_count: 0
+  // Public Ledger State (Persisted in localStorage across page reloads)
+  const [ledgerState, setLedgerState] = useState<LedgerState>(() => {
+    try {
+      const saved = localStorage.getItem('midnight_sanctuary_ledger');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      note_unlocked: false,
+      note_hash: '0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069',
+      unlock_count: 0
+    };
   });
 
-  // Form State
-  const [secretPassphrase, setSecretPassphrase] = useState<string>('MidnightZKSecret2026!');
+  // Form State (Persisted in localStorage)
+  const [secretPassphrase, setSecretPassphrase] = useState<string>(() => {
+    return localStorage.getItem('midnight_sanctuary_pass') || 'MidnightZKSecret2026!';
+  });
   const [passphraseInput, setPassphraseInput] = useState<string>('');
-  const [noteMessage, setNoteMessage] = useState<string>('Top secret Midnight launch payload credentials.');
+  const [noteMessage, setNoteMessage] = useState<string>(() => {
+    return localStorage.getItem('midnight_sanctuary_msg') || 'Top secret Midnight launch payload credentials.';
+  });
   const [isExecutingProof, setIsExecutingProof] = useState(false);
-  const [proofStatus, setProofStatus] = useState<string | null>(null);
+  const [proofStatus, setProofStatus] = useState<string | null>(() => {
+    return localStorage.getItem('midnight_sanctuary_status') || null;
+  });
   const [lastProofTime, setLastProofTime] = useState<number | null>(null);
+
+  // Auto-persist state changes to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('midnight_sanctuary_ledger', JSON.stringify(ledgerState));
+      localStorage.setItem('midnight_sanctuary_pass', secretPassphrase);
+      localStorage.setItem('midnight_sanctuary_msg', noteMessage);
+      if (proofStatus) localStorage.setItem('midnight_sanctuary_status', proofStatus);
+    } catch (e) {}
+  }, [ledgerState, secretPassphrase, noteMessage, proofStatus]);
 
   // Contract Instance
   const [contractInstance, setContractInstance] = useState<Contract<any> | null>(null);

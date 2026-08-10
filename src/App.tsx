@@ -42,6 +42,7 @@ function bytesToHex(bytes: Uint8Array): string {
 
 function truncateHash(hash: string, len = 12): string {
   if (!hash) return '';
+  if (typeof hash !== 'string') hash = String(hash);
   if (hash.length <= len * 2 + 4) return hash;
   return hash.slice(0, len + 2) + '...' + hash.slice(-len);
 }
@@ -70,13 +71,32 @@ async function discoverWalletProvider(timeoutMs = 5000, intervalMs = 500) {
   return null;
 }
 
+// Robust String Extractor to prevent React Error #31
+function stringifyAddress(val: any): string {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object') {
+    if (val.unshieldedAddress && typeof val.unshieldedAddress === 'string') return val.unshieldedAddress;
+    if (val.shieldedAddress && typeof val.shieldedAddress === 'string') return val.shieldedAddress;
+    if (val.address && typeof val.address === 'string') return val.address;
+    if (val.bech32m && typeof val.bech32m === 'string') return val.bech32m;
+    try {
+      const json = JSON.stringify(val);
+      if (json.includes('mn_')) {
+        const match = json.match(/mn_[a-zA-Z0-9_]+/);
+        if (match) return match[0];
+      }
+    } catch (e) {}
+  }
+  return String(val);
+}
+
 async function extractWalletAddress(api: any, provider: any): Promise<string> {
   if (api && typeof api.state === 'function') {
     try {
       const st = await api.state();
-      if (st?.address) return st.address;
-      if (st?.shieldedAddress) return st.shieldedAddress;
-      if (st?.unshieldedAddress) return st.unshieldedAddress;
+      const extracted = stringifyAddress(st?.unshieldedAddress || st?.shieldedAddress || st?.address || st);
+      if (extracted && !extracted.includes('[object Object]')) return extracted;
       if (st?.coinPublicKey?.bytes) {
         return 'mn_preview_' + bytesToHex(st.coinPublicKey.bytes.slice(0, 8)).slice(2);
       }
@@ -84,18 +104,28 @@ async function extractWalletAddress(api: any, provider: any): Promise<string> {
   }
   for (const method of ['getShieldedAddress', 'getUnshieldedAddress', 'getAddress']) {
     if (api && typeof api[method] === 'function') {
-      try { const a = await api[method](); if (a) return a; } catch (e) {}
+      try {
+        const a = await api[method]();
+        const extracted = stringifyAddress(a);
+        if (extracted && !extracted.includes('[object Object]')) return extracted;
+      } catch (e) {}
     }
   }
   if (api && typeof api.getAccounts === 'function') {
-    try { const accs = await api.getAccounts(); if (Array.isArray(accs) && accs[0]) return accs[0]; } catch (e) {}
+    try {
+      const accs = await api.getAccounts();
+      if (Array.isArray(accs) && accs[0]) {
+        const extracted = stringifyAddress(accs[0]);
+        if (extracted && !extracted.includes('[object Object]')) return extracted;
+      }
+    } catch (e) {}
   }
   return '';
 }
 
 export default function App() {
   const [walletConnected, setWalletConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState('');
+  const [walletAddress, setWalletAddress] = useState<string>('');
   const [walletApi, setWalletApi] = useState<any>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
@@ -122,7 +152,6 @@ export default function App() {
   const [isExecutingProof, setIsExecutingProof] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<TxReceipt | null>(null);
   const [statusLog, setStatusLog] = useState<string[]>([]);
-  const [copied, setCopied] = useState(false);
 
   const addLog = useCallback((msg: string) => {
     console.log('[Midnight DApp]', msg);
@@ -181,7 +210,7 @@ export default function App() {
     }
   }, [secretPassphrase]);
 
-  // Connect 1AM Wallet (Delegated In-Browser WASM Prover)
+  // Connect 1AM Wallet
   const handleConnect = async () => {
     setIsConnecting(true);
     addLog('🔍 Discovering 1AM Midnight wallet provider (In-Browser WASM Prover)...');
@@ -209,8 +238,8 @@ export default function App() {
         throw new Error('Wallet connection cancelled by user.');
       }
 
-      const addr = await extractWalletAddress(api, provider);
-      const displayAddr = addr || `1AM Wallet Account (${key})`;
+      const rawAddr = await extractWalletAddress(api, provider);
+      const displayAddr = stringifyAddress(rawAddr) || `1AM Wallet Account (${key})`;
 
       setWalletApi(api);
       setWalletAddress(displayAddr);
@@ -268,7 +297,6 @@ export default function App() {
       addLog(`✅ Phase 1 Complete: Local Compact circuit verified in ${elapsed}ms`);
       addLog(`   Commitment Hash: ${truncateHash(hexHash)}`);
 
-      // Attempt Delegated In-Browser Proving & Submission via 1AM Wallet
       let txHash: string | null = null;
       let onChainStatus: TxReceipt['status'] = 'local_verified';
       let statusMsg = `Circuit verified in 1AM WASM Prover (${elapsed}ms). Commitment Hash updated.`;
@@ -283,7 +311,7 @@ export default function App() {
             const balancedTx = await walletApi.balanceAndProveTransaction(tx, []);
             addLog('   Submitting proven transaction to Midnight Preview...');
             const result = await walletApi.submitTransaction(balancedTx);
-            txHash = typeof result === 'string' ? result : result?.txHash || result?.hash || JSON.stringify(result);
+            txHash = typeof result === 'string' ? result : stringifyAddress(result?.txHash || result?.hash || result);
             onChainStatus = 'confirmed';
             statusMsg = `Confirmed on Midnight Preview Network via 1AM Prover`;
             addLog(`🎉 On-chain confirmed! Tx: ${txHash}`);
@@ -291,7 +319,7 @@ export default function App() {
             addLog('   Executing delegated balanceUnsealedTransaction in 1AM WASM...');
             const balancedTx = await walletApi.balanceUnsealedTransaction(tx);
             const result = await walletApi.submitTransaction(balancedTx);
-            txHash = typeof result === 'string' ? result : result?.txHash || result?.hash || JSON.stringify(result);
+            txHash = typeof result === 'string' ? result : stringifyAddress(result?.txHash || result?.hash || result);
             onChainStatus = 'confirmed';
             statusMsg = `Confirmed on Midnight Preview Network via 1AM Prover`;
             addLog(`🎉 On-chain confirmed! Tx: ${txHash}`);
@@ -383,7 +411,7 @@ export default function App() {
             const args = walletApi.balanceUnsealedTransaction ? [tx] : [tx, []];
             const balancedTx = await balanceFn(...args);
             const result = await walletApi.submitTransaction(balancedTx);
-            txHash = typeof result === 'string' ? result : result?.txHash || result?.hash || JSON.stringify(result);
+            txHash = typeof result === 'string' ? result : stringifyAddress(result?.txHash || result?.hash || result);
             onChainStatus = 'confirmed';
             statusMsg = 'Confirmed on Midnight Preview Network via 1AM Prover';
             addLog(`🎉 On-chain confirmed! Tx: ${txHash}`);
@@ -433,6 +461,9 @@ export default function App() {
     s === 'local_verified' ? '⚡ 1AM WASM ZK Proof Verified' :
     '❌ ZK Proof Failed';
 
+  // Safe string representation for rendering in JSX
+  const displayAddress = typeof walletAddress === 'string' ? walletAddress : stringifyAddress(walletAddress);
+
   return (
     <div className="min-h-screen bg-[#08090c] text-[#f7f4eb] font-playfair pb-24 pt-10 px-4 sm:px-6 lg:px-12 max-w-7xl mx-auto space-y-10">
 
@@ -468,7 +499,7 @@ export default function App() {
                     <Zap className="w-3 h-3 text-[#d4af37]" /> 1AM Wallet Connected
                   </p>
                   <p className="text-xs font-mono text-[#f4e4bc] truncate max-w-[180px]">
-                    {walletAddress}
+                    {String(displayAddress || '1AM Account')}
                   </p>
                 </div>
               </div>
@@ -575,7 +606,7 @@ export default function App() {
                 <Hash className="w-4 h-4 text-[#d4af37]" />
               </div>
               <p className="text-xs font-mono text-[#f4e4bc] break-all bg-[#07080b] p-3.5 rounded-xl border border-[#d4af37]/30 min-h-[40px]">
-                {ledgerState.note_hash || <span className="text-[#555]">Run setup_note to generate commitment</span>}
+                {String(ledgerState.note_hash || '') || <span className="text-[#555]">Run setup_note to generate commitment</span>}
               </p>
             </div>
 
@@ -733,7 +764,7 @@ export default function App() {
                   {activeReceipt.receiptHash && (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 pt-1">
                       <span className="font-bold min-w-[140px]">Receipt Hash:</span>
-                      <span className="text-[#d4af37] break-all">{activeReceipt.receiptHash}</span>
+                      <span className="text-[#d4af37] break-all">{String(activeReceipt.receiptHash)}</span>
                     </div>
                   )}
                 </div>
@@ -760,7 +791,7 @@ export default function App() {
         <section className="neo-card rounded-2xl p-5 border border-[#d4af37]/30 bg-[#0d0f15]/90 space-y-3">
           <div className="flex items-center justify-between text-xs font-cinzel font-bold text-[#d4af37] uppercase tracking-widest">
             <span className="flex items-center gap-2.5"><Terminal className="w-4 h-4" /> 1AM ProofStation Diagnostic Console</span>
-            <button onClick={() => setStatusLog([])} className="text-[#c5bca3] hover:text-white transition cursor-pointer text-[10px] font-mono">
+            <button onClick={() => setStatusLog([])} className="text-[#c5bca3] hover:text-[#f7f4eb] transition cursor-pointer text-[10px] font-mono">
               Clear
             </button>
           </div>
@@ -768,7 +799,7 @@ export default function App() {
             {statusLog.map((log, idx) => (
               <div key={idx} className="border-b border-[#d4af37]/10 pb-1 flex items-start gap-2">
                 <span className="text-[#d4af37] font-bold text-[10px] mt-0.5">›</span>
-                <span>{log}</span>
+                <span>{String(log)}</span>
               </div>
             ))}
           </div>

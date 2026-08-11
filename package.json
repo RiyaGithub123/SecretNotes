@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "compile": "wsl /home/bisha/.compact/versions/0.31.1/x86_64-unknown-linux-musl/compactc.bin contract/secret_notes.compact managed",
-    "deploy": "node scripts/deploy.js"
+    "deploy": "node scripts/deploy-cli.mjs"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "^0.16.0",

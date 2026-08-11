@@ -1,7 +1,10 @@
 {
-  "networkId": "preview",
-  "indexerUrl": "https://indexer.preview.midnight.network/api/v4/graphql",
-  "indexerWsUrl": "wss://indexer.preview.midnight.network/api/v4/graphql/ws",
-  "nodeUrl": "https://rpc.preview.midnight.network",
-  "proofServerUrl": "http://localhost:6300"
+  "networkId": "preprod",
+  "indexerUrl": "https://indexer.preprod.midnight.network/api/v4/graphql",
+  "indexerWsUrl": "wss://indexer.preprod.midnight.network/api/v4/graphql/ws",
+  "nodeUrl": "https://rpc.preprod.midnight.network",
+  "proofServerUrl": "http://localhost:6300",
+  "faucetUrl": "https://faucet.preprod.midnight.network/",
+  "deployerAddress": "mn_addr_preprod1ly92wm99e3hsmyprv4ehles5pvqr0xjceuwl6vu0celldwtt4q0sh34znp",
+  "timestamp": "2026-08-11T17:27:45.860Z"
 }

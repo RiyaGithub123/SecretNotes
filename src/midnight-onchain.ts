@@ -16,6 +16,11 @@ import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-pri
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { ZKConfigProvider, type MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
+import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+
+try {
+  setNetworkId(deployConfig.networkId || 'preprod');
+} catch (e) {}
 
 // Types
 export interface OnChainConfig {

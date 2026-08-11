@@ -64,8 +64,9 @@ export async function queryContractState(
 ): Promise<OnChainLedgerState | null> {
   try {
     const query = `
-      query GetContractState($address: String!) {
-        contractState(contractAddress: $address) {
+      query GetContractAction($address: HexEncoded!) {
+        contractAction(address: $address) {
+          address
           state
         }
       }
@@ -82,18 +83,13 @@ export async function queryContractState(
 
     const data = await response.json();
     
-    if (data.errors) {
-      console.warn('[Midnight] Indexer query error:', data.errors);
+    if (data.errors || !data.data?.contractAction?.state) {
+      console.log('[Midnight Indexer] No confirmed contract action found for address:', contractAddress);
       return null;
     }
 
-    if (!data.data?.contractState?.state) {
-      console.warn('[Midnight] No contract state found for address:', contractAddress);
-      return null;
-    }
-
-    // Parse the raw state using the compiled contract's ledger() function
-    const rawState = data.data.contractState.state;
+    // Parse raw state using compiled contract ledger parser
+    const rawState = data.data.contractAction.state;
     const parsed = ledger(rawState);
     
     return {
@@ -102,7 +98,7 @@ export async function queryContractState(
       unlock_count: Number(parsed.unlock_count),
     };
   } catch (err) {
-    console.error('[Midnight] Failed to query indexer:', err);
+    console.error('[Midnight Indexer] Error querying contract state:', err);
     return null;
   }
 }

@@ -674,14 +674,6 @@ export default function App() {
         <div className="flex items-center gap-3 w-full md:w-auto">
           {walletConnected ? (
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleDeployContract}
-                disabled={isDeployingContract}
-                className="flex items-center gap-2 px-4 py-3 neo-card-gold text-slate-950 font-cinzel font-bold text-xs rounded-xl shadow-lg transition cursor-pointer disabled:opacity-50 active:scale-95"
-              >
-                {isDeployingContract ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCode2 className="w-4 h-4" />}
-                {isDeployingContract ? 'Deploying Contract...' : 'Deploy Smart Contract'}
-              </button>
               <div className="flex items-center gap-3 px-5 py-3 neo-card rounded-xl border border-[#d4af37]/50 shadow-xl">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                 <div className="text-left">
@@ -734,11 +726,11 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3 p-3.5 rounded-xl bg-[#07080b] border border-[#d4af37]/20">
-            <FileCode2 className={`w-4 h-4 ${deployedContractAddress ? 'text-emerald-400' : 'text-[#d4af37]'}`} />
+            <FileCode2 className="w-4 h-4 text-emerald-400" />
             <div className="min-w-0">
               <p className="text-[10px] font-cinzel uppercase text-[#c5bca3]">Deployed Smart Contract</p>
-              <p className="text-xs text-[#f4e4bc] font-bold truncate max-w-[200px]" title={deployedContractAddress || 'Not Deployed Yet'}>
-                {deployedContractAddress ? `${deployedContractAddress.slice(0, 16)}...` : 'Click "Deploy Smart Contract"'}
+              <p className="text-xs text-[#f4e4bc] font-bold truncate max-w-[200px]" title={deployedContractAddress || '6eeb7f81a17880d57c4e46ae93b39eefc68459a0219e309bf896a1e7f011d5dd'}>
+                {deployedContractAddress ? `${deployedContractAddress.slice(0, 14)}...` : '6eeb7f81a17880d5...'}
               </p>
             </div>
           </div>

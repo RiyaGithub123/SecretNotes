@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "compile": "wsl /home/bisha/.compact/versions/0.31.1/x86_64-unknown-linux-musl/compactc.bin contract/secret_notes.compact managed",
-    "deploy": "node scripts/deploy-cli.mjs"
+    "deploy": "npx tsx scripts/deploy-official.ts --network preprod"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "^0.16.0",
@@ -19,10 +19,14 @@
     "@midnight-ntwrk/midnight-js-http-client-proof-provider": "^4.1.1",
     "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "^4.1.1",
     "@midnight-ntwrk/midnight-js-level-private-state-provider": "^4.1.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "^4.1.1",
+    "@midnight-ntwrk/wallet-sdk": "^1.2.0",
     "bip39": "^3.1.0",
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "rxjs": "^7.8.2",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

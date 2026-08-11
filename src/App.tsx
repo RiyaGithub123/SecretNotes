@@ -206,6 +206,26 @@ export default function App() {
     } catch (e) {}
   }, [ledgerState, secretPassphrase, noteMessage]);
 
+  // Query live on-chain contract state from Midnight Preprod Indexer on mount
+  useEffect(() => {
+    async function fetchOnChainState() {
+      try {
+        const state = await queryContractState('6eeb7f81a17880d57c4e46ae93b39eefc68459a0219e309bf896a1e7f011d5dd');
+        if (state && state.note_hash) {
+          setLedgerState({
+            note_unlocked: state.note_unlocked,
+            note_hash: state.note_hash,
+            unlock_count: state.unlock_count,
+          });
+          addLog(`📡 Midnight Preprod Indexer: Synced live contract state (unlock_count = ${state.unlock_count})`);
+        }
+      } catch (err) {
+        console.warn('[Midnight Indexer] Mount sync error:', err);
+      }
+    }
+    fetchOnChainState();
+  }, [addLog]);
+
   // Initialize Contract Context
   useEffect(() => {
     if (!secretPassphrase) return;
@@ -354,11 +374,14 @@ export default function App() {
       return;
     }
 
-    // Check passphrase uniqueness in local registry
+    // Check passphrase uniqueness in local registry and on-chain commitment
+    const computedHash = await computeSha256Hex(secretPassphrase);
     const existingNote = findNoteByPassphrase(secretPassphrase);
-    if (existingNote) {
-      addLog(`❌ Passphrase already used! A note with this passphrase was created on ${existingNote.createdAt}.`);
-      addLog(`💡 Use a different passphrase to create a new note.`);
+    
+    if (existingNote || (ledgerState.note_hash && ledgerState.note_hash.toLowerCase() === computedHash.toLowerCase())) {
+      addLog(`❌ Secret Phrase Conflict: This secret phrase is already in use!`);
+      addLog(`💡 Please enter a unique secret phrase to create a new vault note.`);
+      alert('This secret phrase is already in use on-chain or in your vault. Please choose a unique secret phrase.');
       return;
     }
 

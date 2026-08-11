@@ -11,6 +11,11 @@
 
 import { Contract, ledger, contractReferenceLocations } from '../managed/contract/index.js';
 import deployConfig from './deploy-config.json';
+import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
+import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
+import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
+import { ZKConfigProvider, type MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
 
 // Types
 export interface OnChainConfig {
@@ -165,6 +170,95 @@ export async function getWalletProvingProvider(walletApi: any): Promise<any | nu
     console.warn('[Midnight] Could not get wallet proving provider:', e);
   }
   return null;
+}
+
+// ============================================================
+// MIDNIGHT PROVIDERS & REAL CONTRACT DEPLOYMENT
+// ============================================================
+
+export class BrowserZKConfigProvider extends ZKConfigProvider<string> {
+  async getZKIR(circuitId: string): Promise<any> {
+    const res = await fetch(`/managed/zkir/${circuitId}.zkir`);
+    if (!res.ok) throw new Error(`Failed to fetch ZKIR for ${circuitId}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async getProverKey(circuitId: string): Promise<any> {
+    const res = await fetch(`/managed/keys/${circuitId}.prover`);
+    if (!res.ok) throw new Error(`Failed to fetch Prover key for ${circuitId}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async getVerifierKey(circuitId: string): Promise<any> {
+    const res = await fetch(`/managed/keys/${circuitId}.verifier`);
+    if (!res.ok) throw new Error(`Failed to fetch Verifier key for ${circuitId}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+}
+
+export async function buildMidnightProviders(
+  walletApi: any,
+  config: OnChainConfig = deployConfig
+): Promise<MidnightProviders> {
+  const zkConfigProvider = new BrowserZKConfigProvider();
+  const proofProvider = httpClientProofProvider(config.proofServerUrl, zkConfigProvider);
+  const publicDataProvider = indexerPublicDataProvider(config.indexerUrl, config.indexerWsUrl);
+  
+  const privateStateProvider = levelPrivateStateProvider({
+    midnightDbName: 'midnight-sanctuary-client-db',
+    privateStateStoreName: 'private-states',
+    signingKeyStoreName: 'signing-keys',
+    privateStoragePasswordProvider: () => 'MidnightSecretNotesClientPass2026!',
+    accountId: 'client-wallet-account'
+  });
+
+  return {
+    privateStateProvider,
+    publicDataProvider,
+    zkConfigProvider,
+    proofProvider,
+    walletProvider: walletApi,
+    midnightProvider: walletApi,
+  };
+}
+
+export async function deploySecretNotesContract(
+  walletApi: any,
+  addLog: (msg: string) => void
+): Promise<{ success: boolean; contractAddress?: string; error?: string }> {
+  try {
+    addLog('🚀 Building MidnightProviders for smart contract deployment...');
+    const providers = await buildMidnightProviders(walletApi);
+    
+    addLog('📦 Creating contract instance with witnesses...');
+    const contract = new Contract({
+      passphrase: (ctx: any) => [ctx.privateState, new Uint8Array(32)]
+    });
+
+    addLog('📡 Calling deployContract from Midnight SDK (submitting deploy tx)...');
+    const deployed = await deployContract(providers as any, {
+      compiledContract: contract as any,
+      args: [],
+      privateStateId: 'secretNotesPrivateState',
+      initialPrivateState: {},
+    } as any);
+
+    const contractAddress = (deployed.deployTxData as any)?.public?.contractAddress || (deployed as any)?.contractAddress || String(deployed);
+    addLog(`🎉 Contract successfully deployed to Midnight Preview! Address: ${contractAddress}`);
+    
+    localStorage.setItem('midnight_sanctuary_contract_address', contractAddress);
+
+    return {
+      success: true,
+      contractAddress,
+    };
+  } catch (err: any) {
+    addLog(`❌ Contract deployment failed: ${err.message || String(err)}`);
+    return {
+      success: false,
+      error: err.message || String(err),
+    };
+  }
 }
 
 // ============================================================

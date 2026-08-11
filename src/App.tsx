@@ -8,7 +8,7 @@ import {
 import { Contract, ledger } from '../managed/contract/index.js';
 import { createCircuitContext, dummyContractAddress } from '@midnight-ntwrk/compact-runtime';
 import {
-  getWalletConfig, queryContractState,
+  getWalletConfig, queryContractState, deploySecretNotesContract,
   loadStoredNotes, addStoredNote, findNoteByPassphrase,
   type StoredNote, type OnChainConfig,
 } from './midnight-onchain';
@@ -158,6 +158,28 @@ export default function App() {
   const [revealedMessage, setRevealedMessage] = useState<string | null>(null);
 
   const [isExecutingProof, setIsExecutingProof] = useState(false);
+  const [isDeployingContract, setIsDeployingContract] = useState(false);
+  const [deployedContractAddress, setDeployedContractAddress] = useState<string>(() => {
+    return localStorage.getItem('midnight_sanctuary_contract_address') || '';
+  });
+
+  const handleDeployContract = async () => {
+    if (!walletConnected || !walletApi) {
+      addLog('❌ Connect your 1AM wallet first!');
+      return;
+    }
+    setIsDeployingContract(true);
+    try {
+      const res = await deploySecretNotesContract(walletApi, addLog);
+      if (res.success && res.contractAddress) {
+        setDeployedContractAddress(res.contractAddress);
+      }
+    } catch (e: any) {
+      addLog(`❌ Deployment error: ${e.message || e}`);
+    } finally {
+      setIsDeployingContract(false);
+    }
+  };
   const [activeReceipt, setActiveReceipt] = useState<TxReceipt | null>(null);
   const [statusLog, setStatusLog] = useState<string[]>([]);
 
@@ -634,7 +656,15 @@ export default function App() {
         {/* 1AM Wallet Connection */}
         <div className="flex items-center gap-3 w-full md:w-auto">
           {walletConnected ? (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleDeployContract}
+                disabled={isDeployingContract}
+                className="flex items-center gap-2 px-4 py-3 neo-card-gold text-slate-950 font-cinzel font-bold text-xs rounded-xl shadow-lg transition cursor-pointer disabled:opacity-50 active:scale-95"
+              >
+                {isDeployingContract ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCode2 className="w-4 h-4" />}
+                {isDeployingContract ? 'Deploying Contract...' : 'Deploy Smart Contract'}
+              </button>
               <div className="flex items-center gap-3 px-5 py-3 neo-card rounded-xl border border-[#d4af37]/50 shadow-xl">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                 <div className="text-left">
@@ -687,11 +717,11 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3 p-3.5 rounded-xl bg-[#07080b] border border-[#d4af37]/20">
-            <Shield className={`w-4 h-4 ${walletConnected ? 'text-emerald-400' : 'text-[#777]'}`} />
-            <div>
-              <p className="text-[10px] font-cinzel uppercase text-[#c5bca3]">1AM ProofStation</p>
-              <p className={`text-xs font-bold ${walletConnected ? 'text-emerald-400' : 'text-[#777]'}`}>
-                {walletConnected ? 'Active & Ready' : 'Disconnected'}
+            <FileCode2 className={`w-4 h-4 ${deployedContractAddress ? 'text-emerald-400' : 'text-[#d4af37]'}`} />
+            <div className="min-w-0">
+              <p className="text-[10px] font-cinzel uppercase text-[#c5bca3]">Deployed Smart Contract</p>
+              <p className="text-xs text-[#f4e4bc] font-bold truncate max-w-[200px]" title={deployedContractAddress || 'Not Deployed Yet'}>
+                {deployedContractAddress ? `${deployedContractAddress.slice(0, 16)}...` : 'Click "Deploy Smart Contract"'}
               </p>
             </div>
           </div>

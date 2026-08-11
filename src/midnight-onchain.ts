@@ -12,7 +12,6 @@
 import { Contract, ledger, contractReferenceLocations } from '../managed/contract/index.js';
 import deployConfig from './deploy-config.json';
 import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
-import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import type { MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
@@ -218,6 +217,36 @@ export class BrowserZKConfigProvider {
   }
 }
 
+export class BrowserPrivateStateProvider {
+  private store = new Map<string, any>();
+
+  async get(id: string): Promise<any | null> {
+    const item = localStorage.getItem(`midnight_ps_${id}`);
+    if (item) {
+      try { return JSON.parse(item); } catch (e) {}
+    }
+    return this.store.get(id) ?? null;
+  }
+
+  async set(id: string, state: any): Promise<void> {
+    this.store.set(id, state);
+    try {
+      localStorage.setItem(`midnight_ps_${id}`, JSON.stringify(state));
+    } catch (e) {}
+  }
+
+  async remove(id: string): Promise<void> {
+    this.store.delete(id);
+    try {
+      localStorage.removeItem(`midnight_ps_${id}`);
+    } catch (e) {}
+  }
+
+  async clear(): Promise<void> {
+    this.store.clear();
+  }
+}
+
 export async function buildMidnightProviders(
   walletApi: any,
   config: OnChainConfig = deployConfig
@@ -225,14 +254,7 @@ export async function buildMidnightProviders(
   const zkConfigProvider = new BrowserZKConfigProvider() as any;
   const proofProvider = httpClientProofProvider(config.proofServerUrl, zkConfigProvider);
   const publicDataProvider = indexerPublicDataProvider(config.indexerUrl, config.indexerWsUrl);
-  
-  const privateStateProvider = levelPrivateStateProvider({
-    midnightDbName: 'midnight-sanctuary-client-db',
-    privateStateStoreName: 'private-states',
-    signingKeyStoreName: 'signing-keys',
-    privateStoragePasswordProvider: () => 'MidnightSecretNotesClientPass2026!',
-    accountId: 'client-wallet-account'
-  });
+  const privateStateProvider = new BrowserPrivateStateProvider() as any;
 
   return {
     privateStateProvider,

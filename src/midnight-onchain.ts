@@ -15,7 +15,7 @@ import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
-import { ZKConfigProvider, type MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
+import type { MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/compact-js';
 
@@ -178,7 +178,7 @@ export async function getWalletProvingProvider(walletApi: any): Promise<any | nu
 // MIDNIGHT PROVIDERS & REAL CONTRACT DEPLOYMENT
 // ============================================================
 
-export class BrowserZKConfigProvider extends ZKConfigProvider<string> {
+export class BrowserZKConfigProvider {
   async getZKIR(circuitId: string): Promise<any> {
     const res = await fetch(`/managed/zkir/${circuitId}.zkir`);
     if (!res.ok) throw new Error(`Failed to fetch ZKIR for ${circuitId}`);
@@ -196,13 +196,33 @@ export class BrowserZKConfigProvider extends ZKConfigProvider<string> {
     if (!res.ok) throw new Error(`Failed to fetch Verifier key for ${circuitId}`);
     return new Uint8Array(await res.arrayBuffer());
   }
+
+  async getVerifierKeys(circuitIds: string[]): Promise<any> {
+    const keys = await Promise.all(circuitIds.map(id => this.getVerifierKey(id)));
+    return circuitIds.map((id, i) => [id, keys[i]]);
+  }
+
+  async get(circuitId: string): Promise<any> {
+    const zkir = await this.getZKIR(circuitId);
+    const proverKey = await this.getProverKey(circuitId);
+    const verifierKey = await this.getVerifierKey(circuitId);
+    return { zkir, proverKey, verifierKey };
+  }
+
+  asKeyMaterialProvider(): any {
+    return {
+      getZKIR: (circuitId: string) => this.getZKIR(circuitId),
+      getProverKey: (circuitId: string) => this.getProverKey(circuitId),
+      getVerifierKey: (circuitId: string) => this.getVerifierKey(circuitId),
+    };
+  }
 }
 
 export async function buildMidnightProviders(
   walletApi: any,
   config: OnChainConfig = deployConfig
 ): Promise<MidnightProviders> {
-  const zkConfigProvider = new BrowserZKConfigProvider();
+  const zkConfigProvider = new BrowserZKConfigProvider() as any;
   const proofProvider = httpClientProofProvider(config.proofServerUrl, zkConfigProvider);
   const publicDataProvider = indexerPublicDataProvider(config.indexerUrl, config.indexerWsUrl);
   

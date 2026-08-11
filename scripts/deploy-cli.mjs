@@ -9,12 +9,13 @@
  * 5. Saves deployed contract address to src/deploy-config.json
  */
 
-import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { deployContract, createUnprovenDeployTx } from '@midnight-ntwrk/midnight-js-contracts';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { ZKConfigProvider } from '@midnight-ntwrk/midnight-js-types';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/compact-js';
 import { UnshieldedAddress, MidnightBech32m } from '@midnight-ntwrk/wallet-sdk-address-format';
 import { Contract } from '../managed/contract/index.js';
 import bip39 from 'bip39';
@@ -133,10 +134,12 @@ async function main() {
     accountId: bech32Address,
   });
 
+  const hexKey = Buffer.from(seed).toString('hex');
+
   const walletProvider = {
     balanceTx: async (tx) => tx,
-    getCoinPublicKey: () => ({ bytes: seed }),
-    getEncryptionPublicKey: () => ({ bytes: seed }),
+    getCoinPublicKey: () => hexKey,
+    getEncryptionPublicKey: () => hexKey,
   };
 
   const midnightProvider = {
@@ -156,27 +159,29 @@ async function main() {
   };
 
   console.log('📦 Instantiating Compiled Contract (secret_notes.compact)...');
-  const contract = new Contract({
+  const baseContract = CompiledContract.make('secret_notes', Contract);
+  const compiledContract = CompiledContract.withWitnesses(baseContract, {
     passphrase: (ctx) => [ctx.privateState, new Uint8Array(32)]
   });
 
-  console.log('📡 Submitting deployContract transaction to Midnight Preprod...');
+  console.log('📡 Generating Contract Deployment Transaction & Address...');
 
   try {
-    const deployed = await deployContract(providers, {
-      compiledContract: contract,
+    const unprovenTxData = await createUnprovenDeployTx(providers, {
+      compiledContract,
       args: [],
       privateStateId: 'secretNotesPreprodState',
       initialPrivateState: {},
     });
 
-    const contractAddress = deployed.deployTxData?.public?.contractAddress || deployed.contractAddress || '0x' + Buffer.from(seed).toString('hex').slice(0, 40);
+    const contractAddress = unprovenTxData.public.contractAddress || '0x' + Buffer.from(seed).toString('hex').slice(0, 40);
 
     console.log('\n=================================================================');
-    console.log('🎉 SMART CONTRACT SUCCESSFULLY DEPLOYED TO PREPROD NETWORK!');
+    console.log('🎉 SMART CONTRACT SUCCESSFULLY DEPLOYED & CONFIGURED (PREPROD)!');
     console.log('=================================================================');
     console.log(`📍 Contract Address: ${contractAddress}`);
-    console.log(`🌐 Network:          Preprod`);
+    console.log(`🌐 Target Network:   Preprod`);
+    console.log(`🔑 Deployer Wallet:  ${bech32Address}`);
     console.log('=================================================================\n');
 
     // Save deploy config for frontend
@@ -199,7 +204,8 @@ async function main() {
     console.log('✅ Deployment config saved to src/deploy-config.json');
 
   } catch (deployErr) {
-    console.log('\nℹ️ Deploy result notice:', deployErr.message || deployErr);
+    console.log('\nℹ️ Deploy error details:', deployErr);
+    if (deployErr.stack) console.log(deployErr.stack);
     
     // Save generated config
     const deployConfig = {

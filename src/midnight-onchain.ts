@@ -17,6 +17,7 @@ import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-p
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { ZKConfigProvider, type MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/compact-js';
 
 try {
   setNetworkId(deployConfig.networkId || 'preprod');
@@ -235,14 +236,15 @@ export async function deploySecretNotesContract(
     addLog('🚀 Building MidnightProviders for smart contract deployment...');
     const providers = await buildMidnightProviders(walletApi);
     
-    addLog('📦 Creating contract instance with witnesses...');
-    const contract = new Contract({
+    addLog('📦 Creating compiled contract object with witnesses...');
+    const baseContract = CompiledContract.make('secret_notes', Contract);
+    const compiledContract = CompiledContract.withWitnesses(baseContract, {
       passphrase: (ctx: any) => [ctx.privateState, new Uint8Array(32)]
     });
 
     addLog('📡 Calling deployContract from Midnight SDK (submitting deploy tx)...');
     const deployed = await deployContract(providers as any, {
-      compiledContract: contract as any,
+      compiledContract: compiledContract as any,
       args: [],
       privateStateId: 'secretNotesPrivateState',
       initialPrivateState: {},

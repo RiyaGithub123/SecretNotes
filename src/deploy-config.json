@@ -1,0 +1,7 @@
+{
+  "networkId": "preview",
+  "indexerUrl": "https://indexer.preview.midnight.network/api/v4/graphql",
+  "indexerWsUrl": "wss://indexer.preview.midnight.network/api/v4/graphql/ws",
+  "nodeUrl": "https://rpc.preview.midnight.network",
+  "proofServerUrl": "http://localhost:6300"
+}

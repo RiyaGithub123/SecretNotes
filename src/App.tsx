@@ -226,11 +226,11 @@ export default function App() {
     fetchOnChainState();
   }, [addLog]);
 
-  // Initialize Contract Context
+  // Initialize Contract Context on mount
   useEffect(() => {
-    if (!secretPassphrase) return;
     try {
-      const validPass = new TextEncoder().encode(secretPassphrase.padEnd(32, '0')).slice(0, 32);
+      const activePass = secretPassphrase || 'default_passphrase_pad_32_bytes_';
+      const validPass = new TextEncoder().encode(activePass.padEnd(32, '0')).slice(0, 32);
       const contract = new Contract({
         passphrase: (ctx: any) => [ctx.privateState, validPass],
       });
@@ -523,12 +523,6 @@ export default function App() {
         timestamp: new Date().toLocaleTimeString(),
         executionMs: 0
       });
-      return;
-    }
-
-    // We need a contract instance and circuit context to run the ZK verification
-    if (!contractInstance) {
-      addLog('❌ Contract not initialized. Please wait...');
       return;
     }
 
